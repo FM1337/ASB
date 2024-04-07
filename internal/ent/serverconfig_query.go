@@ -4,7 +4,6 @@ package ent
 
 import (
 	"context"
-	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -24,6 +23,7 @@ type ServerConfigQuery struct {
 	inters     []Interceptor
 	predicates []predicate.ServerConfig
 	withServer *ServerQuery
+	withFKs    bool
 	modifiers  []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -75,7 +75,7 @@ func (scq *ServerConfigQuery) QueryServer() *ServerQuery {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(serverconfig.Table, serverconfig.FieldID, selector),
 			sqlgraph.To(server.Table, server.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, true, serverconfig.ServerTable, serverconfig.ServerColumn),
+			sqlgraph.Edge(sqlgraph.O2O, true, serverconfig.ServerTable, serverconfig.ServerColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(scq.driver.Dialect(), step)
 		return fromU, nil
@@ -370,11 +370,18 @@ func (scq *ServerConfigQuery) prepareQuery(ctx context.Context) error {
 func (scq *ServerConfigQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*ServerConfig, error) {
 	var (
 		nodes       = []*ServerConfig{}
+		withFKs     = scq.withFKs
 		_spec       = scq.querySpec()
 		loadedTypes = [1]bool{
 			scq.withServer != nil,
 		}
 	)
+	if scq.withServer != nil {
+		withFKs = true
+	}
+	if withFKs {
+		_spec.Node.Columns = append(_spec.Node.Columns, serverconfig.ForeignKeys...)
+	}
 	_spec.ScanValues = func(columns []string) ([]any, error) {
 		return (*ServerConfig).scanValues(nil, columns)
 	}
@@ -397,9 +404,8 @@ func (scq *ServerConfigQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([
 		return nodes, nil
 	}
 	if query := scq.withServer; query != nil {
-		if err := scq.loadServer(ctx, query, nodes,
-			func(n *ServerConfig) { n.Edges.Server = []*Server{} },
-			func(n *ServerConfig, e *Server) { n.Edges.Server = append(n.Edges.Server, e) }); err != nil {
+		if err := scq.loadServer(ctx, query, nodes, nil,
+			func(n *ServerConfig, e *Server) { n.Edges.Server = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -407,33 +413,34 @@ func (scq *ServerConfigQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([
 }
 
 func (scq *ServerConfigQuery) loadServer(ctx context.Context, query *ServerQuery, nodes []*ServerConfig, init func(*ServerConfig), assign func(*ServerConfig, *Server)) error {
-	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[int]*ServerConfig)
+	ids := make([]int, 0, len(nodes))
+	nodeids := make(map[int][]*ServerConfig)
 	for i := range nodes {
-		fks = append(fks, nodes[i].ID)
-		nodeids[nodes[i].ID] = nodes[i]
-		if init != nil {
-			init(nodes[i])
+		if nodes[i].server_configuration == nil {
+			continue
 		}
+		fk := *nodes[i].server_configuration
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
 	}
-	query.withFKs = true
-	query.Where(predicate.Server(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(serverconfig.ServerColumn), fks...))
-	}))
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(server.IDIn(ids...))
 	neighbors, err := query.All(ctx)
 	if err != nil {
 		return err
 	}
 	for _, n := range neighbors {
-		fk := n.server_configuration
-		if fk == nil {
-			return fmt.Errorf(`foreign-key "server_configuration" is nil for node %v`, n.ID)
-		}
-		node, ok := nodeids[*fk]
+		nodes, ok := nodeids[n.ID]
 		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "server_configuration" returned %v for node %v`, *fk, n.ID)
+			return fmt.Errorf(`unexpected foreign-key "server_configuration" returned %v`, n.ID)
 		}
-		assign(node, n)
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
 	}
 	return nil
 }

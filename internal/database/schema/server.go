@@ -16,7 +16,7 @@ type Server struct {
 // Fields of the Server.
 func (Server) Fields() []ent.Field {
 	return []ent.Field{
-		field.String("id").Unique(),
+		field.String("server_id").Unique(),
 		field.String("owner_id"),
 		field.Bool("enabled").Default(false),
 	}
@@ -31,7 +31,9 @@ func (Server) Mixin() []ent.Mixin {
 func (Server) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("configuration", ServerConfig.Type).Unique().Required(),
+		edge.To("spammer", Spammer.Type).Unique(),
 		edge.To("word_blacklist", WordBlacklist.Type),
+		edge.To("cooldown", Cooldown.Type),
 	}
 }
 

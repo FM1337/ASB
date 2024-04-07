@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/FM1337/ASB/internal/ent/server"
 	"github.com/FM1337/ASB/internal/ent/serverconfig"
 )
 
@@ -44,14 +45,14 @@ type ServerConfig struct {
 	FlagLinks bool `json:"flag_links,omitempty"`
 	// The alert/log channel for a server
 	LogChannel string `json:"log_channel,omitempty"`
+	// The role to give to a spammer if give_role is true
+	GivenRole string `json:"given_role,omitempty"`
 	// Channels listed should not be monitored for spammers
 	ExcludedChannels []string `json:"excluded_channels,omitempty"`
 	// Roles that should be ignored for spam checks
 	ExcludedRoles []string `json:"excluded_roles,omitempty"`
 	// Users that should be ignored for spam checks
 	ExcludedUsers []string `json:"excluded_users,omitempty"`
-	// The role to give to a spammer if give_role is true
-	GivenRole string `json:"given_role,omitempty"`
 	// The amount of times the same message can be sent within the rate limit period before being considered spam
 	RatelimitMessage int `json:"ratelimit_message,omitempty"`
 	// The ratelimit cooldown time, message tracking will be reset after this time period
@@ -62,24 +63,27 @@ type ServerConfig struct {
 	BanDeleteMessageTime serverconfig.BanDeleteMessageTime `json:"ban_delete_message_time,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the ServerConfigQuery when eager-loading is set.
-	Edges        ServerConfigEdges `json:"edges"`
-	selectValues sql.SelectValues
+	Edges                ServerConfigEdges `json:"edges"`
+	server_configuration *int
+	selectValues         sql.SelectValues
 }
 
 // ServerConfigEdges holds the relations/edges for other nodes in the graph.
 type ServerConfigEdges struct {
 	// Server holds the value of the server edge.
-	Server []*Server `json:"server,omitempty"`
+	Server *Server `json:"server,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
 	loadedTypes [1]bool
 }
 
 // ServerOrErr returns the Server value or an error if the edge
-// was not loaded in eager-loading.
-func (e ServerConfigEdges) ServerOrErr() ([]*Server, error) {
-	if e.loadedTypes[0] {
+// was not loaded in eager-loading, or loaded but was not found.
+func (e ServerConfigEdges) ServerOrErr() (*Server, error) {
+	if e.Server != nil {
 		return e.Server, nil
+	} else if e.loadedTypes[0] {
+		return nil, &NotFoundError{label: server.Label}
 	}
 	return nil, &NotLoadedError{edge: "server"}
 }
@@ -99,6 +103,8 @@ func (*ServerConfig) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullString)
 		case serverconfig.FieldCreateTime, serverconfig.FieldUpdateTime:
 			values[i] = new(sql.NullTime)
+		case serverconfig.ForeignKeys[0]: // server_configuration
+			values[i] = new(sql.NullInt64)
 		default:
 			values[i] = new(sql.UnknownType)
 		}
@@ -198,6 +204,12 @@ func (sc *ServerConfig) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				sc.LogChannel = value.String
 			}
+		case serverconfig.FieldGivenRole:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field given_role", values[i])
+			} else if value.Valid {
+				sc.GivenRole = value.String
+			}
 		case serverconfig.FieldExcludedChannels:
 			if value, ok := values[i].(*[]byte); !ok {
 				return fmt.Errorf("unexpected type %T for field excluded_channels", values[i])
@@ -222,12 +234,6 @@ func (sc *ServerConfig) assignValues(columns []string, values []any) error {
 					return fmt.Errorf("unmarshal field excluded_users: %w", err)
 				}
 			}
-		case serverconfig.FieldGivenRole:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field given_role", values[i])
-			} else if value.Valid {
-				sc.GivenRole = value.String
-			}
 		case serverconfig.FieldRatelimitMessage:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field ratelimit_message", values[i])
@@ -251,6 +257,13 @@ func (sc *ServerConfig) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field ban_delete_message_time", values[i])
 			} else if value.Valid {
 				sc.BanDeleteMessageTime = serverconfig.BanDeleteMessageTime(value.String)
+			}
+		case serverconfig.ForeignKeys[0]:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for edge-field server_configuration", value)
+			} else if value.Valid {
+				sc.server_configuration = new(int)
+				*sc.server_configuration = int(value.Int64)
 			}
 		default:
 			sc.selectValues.Set(columns[i], values[i])
@@ -332,6 +345,9 @@ func (sc *ServerConfig) String() string {
 	builder.WriteString("log_channel=")
 	builder.WriteString(sc.LogChannel)
 	builder.WriteString(", ")
+	builder.WriteString("given_role=")
+	builder.WriteString(sc.GivenRole)
+	builder.WriteString(", ")
 	builder.WriteString("excluded_channels=")
 	builder.WriteString(fmt.Sprintf("%v", sc.ExcludedChannels))
 	builder.WriteString(", ")
@@ -340,9 +356,6 @@ func (sc *ServerConfig) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("excluded_users=")
 	builder.WriteString(fmt.Sprintf("%v", sc.ExcludedUsers))
-	builder.WriteString(", ")
-	builder.WriteString("given_role=")
-	builder.WriteString(sc.GivenRole)
 	builder.WriteString(", ")
 	builder.WriteString("ratelimit_message=")
 	builder.WriteString(fmt.Sprintf("%v", sc.RatelimitMessage))

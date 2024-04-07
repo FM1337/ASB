@@ -11,9 +11,11 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/FM1337/ASB/internal/ent/cooldown"
 	"github.com/FM1337/ASB/internal/ent/predicate"
 	"github.com/FM1337/ASB/internal/ent/server"
 	"github.com/FM1337/ASB/internal/ent/serverconfig"
+	"github.com/FM1337/ASB/internal/ent/spammer"
 	"github.com/FM1337/ASB/internal/ent/wordblacklist"
 )
 
@@ -34,6 +36,20 @@ func (su *ServerUpdate) Where(ps ...predicate.Server) *ServerUpdate {
 // SetUpdateTime sets the "update_time" field.
 func (su *ServerUpdate) SetUpdateTime(t time.Time) *ServerUpdate {
 	su.mutation.SetUpdateTime(t)
+	return su
+}
+
+// SetServerID sets the "server_id" field.
+func (su *ServerUpdate) SetServerID(s string) *ServerUpdate {
+	su.mutation.SetServerID(s)
+	return su
+}
+
+// SetNillableServerID sets the "server_id" field if the given value is not nil.
+func (su *ServerUpdate) SetNillableServerID(s *string) *ServerUpdate {
+	if s != nil {
+		su.SetServerID(*s)
+	}
 	return su
 }
 
@@ -76,6 +92,25 @@ func (su *ServerUpdate) SetConfiguration(s *ServerConfig) *ServerUpdate {
 	return su.SetConfigurationID(s.ID)
 }
 
+// SetSpammerID sets the "spammer" edge to the Spammer entity by ID.
+func (su *ServerUpdate) SetSpammerID(id int) *ServerUpdate {
+	su.mutation.SetSpammerID(id)
+	return su
+}
+
+// SetNillableSpammerID sets the "spammer" edge to the Spammer entity by ID if the given value is not nil.
+func (su *ServerUpdate) SetNillableSpammerID(id *int) *ServerUpdate {
+	if id != nil {
+		su = su.SetSpammerID(*id)
+	}
+	return su
+}
+
+// SetSpammer sets the "spammer" edge to the Spammer entity.
+func (su *ServerUpdate) SetSpammer(s *Spammer) *ServerUpdate {
+	return su.SetSpammerID(s.ID)
+}
+
 // AddWordBlacklistIDs adds the "word_blacklist" edge to the WordBlacklist entity by IDs.
 func (su *ServerUpdate) AddWordBlacklistIDs(ids ...int) *ServerUpdate {
 	su.mutation.AddWordBlacklistIDs(ids...)
@@ -91,6 +126,21 @@ func (su *ServerUpdate) AddWordBlacklist(w ...*WordBlacklist) *ServerUpdate {
 	return su.AddWordBlacklistIDs(ids...)
 }
 
+// AddCooldownIDs adds the "cooldown" edge to the Cooldown entity by IDs.
+func (su *ServerUpdate) AddCooldownIDs(ids ...int) *ServerUpdate {
+	su.mutation.AddCooldownIDs(ids...)
+	return su
+}
+
+// AddCooldown adds the "cooldown" edges to the Cooldown entity.
+func (su *ServerUpdate) AddCooldown(c ...*Cooldown) *ServerUpdate {
+	ids := make([]int, len(c))
+	for i := range c {
+		ids[i] = c[i].ID
+	}
+	return su.AddCooldownIDs(ids...)
+}
+
 // Mutation returns the ServerMutation object of the builder.
 func (su *ServerUpdate) Mutation() *ServerMutation {
 	return su.mutation
@@ -99,6 +149,12 @@ func (su *ServerUpdate) Mutation() *ServerMutation {
 // ClearConfiguration clears the "configuration" edge to the ServerConfig entity.
 func (su *ServerUpdate) ClearConfiguration() *ServerUpdate {
 	su.mutation.ClearConfiguration()
+	return su
+}
+
+// ClearSpammer clears the "spammer" edge to the Spammer entity.
+func (su *ServerUpdate) ClearSpammer() *ServerUpdate {
+	su.mutation.ClearSpammer()
 	return su
 }
 
@@ -121,6 +177,27 @@ func (su *ServerUpdate) RemoveWordBlacklist(w ...*WordBlacklist) *ServerUpdate {
 		ids[i] = w[i].ID
 	}
 	return su.RemoveWordBlacklistIDs(ids...)
+}
+
+// ClearCooldown clears all "cooldown" edges to the Cooldown entity.
+func (su *ServerUpdate) ClearCooldown() *ServerUpdate {
+	su.mutation.ClearCooldown()
+	return su
+}
+
+// RemoveCooldownIDs removes the "cooldown" edge to Cooldown entities by IDs.
+func (su *ServerUpdate) RemoveCooldownIDs(ids ...int) *ServerUpdate {
+	su.mutation.RemoveCooldownIDs(ids...)
+	return su
+}
+
+// RemoveCooldown removes "cooldown" edges to Cooldown entities.
+func (su *ServerUpdate) RemoveCooldown(c ...*Cooldown) *ServerUpdate {
+	ids := make([]int, len(c))
+	for i := range c {
+		ids[i] = c[i].ID
+	}
+	return su.RemoveCooldownIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -177,7 +254,7 @@ func (su *ServerUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if err := su.check(); err != nil {
 		return n, err
 	}
-	_spec := sqlgraph.NewUpdateSpec(server.Table, server.Columns, sqlgraph.NewFieldSpec(server.FieldID, field.TypeString))
+	_spec := sqlgraph.NewUpdateSpec(server.Table, server.Columns, sqlgraph.NewFieldSpec(server.FieldID, field.TypeInt))
 	if ps := su.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
@@ -188,6 +265,9 @@ func (su *ServerUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if value, ok := su.mutation.UpdateTime(); ok {
 		_spec.SetField(server.FieldUpdateTime, field.TypeTime, value)
 	}
+	if value, ok := su.mutation.ServerID(); ok {
+		_spec.SetField(server.FieldServerID, field.TypeString, value)
+	}
 	if value, ok := su.mutation.OwnerID(); ok {
 		_spec.SetField(server.FieldOwnerID, field.TypeString, value)
 	}
@@ -196,7 +276,7 @@ func (su *ServerUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if su.mutation.ConfigurationCleared() {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2O,
+			Rel:     sqlgraph.O2O,
 			Inverse: false,
 			Table:   server.ConfigurationTable,
 			Columns: []string{server.ConfigurationColumn},
@@ -209,13 +289,42 @@ func (su *ServerUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if nodes := su.mutation.ConfigurationIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2O,
+			Rel:     sqlgraph.O2O,
 			Inverse: false,
 			Table:   server.ConfigurationTable,
 			Columns: []string{server.ConfigurationColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(serverconfig.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if su.mutation.SpammerCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   server.SpammerTable,
+			Columns: []string{server.SpammerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(spammer.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := su.mutation.SpammerIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   server.SpammerTable,
+			Columns: []string{server.SpammerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(spammer.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {
@@ -268,6 +377,51 @@ func (su *ServerUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if su.mutation.CooldownCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   server.CooldownTable,
+			Columns: []string{server.CooldownColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(cooldown.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := su.mutation.RemovedCooldownIDs(); len(nodes) > 0 && !su.mutation.CooldownCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   server.CooldownTable,
+			Columns: []string{server.CooldownColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(cooldown.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := su.mutation.CooldownIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   server.CooldownTable,
+			Columns: []string{server.CooldownColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(cooldown.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	_spec.AddModifiers(su.modifiers...)
 	if n, err = sqlgraph.UpdateNodes(ctx, su.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -293,6 +447,20 @@ type ServerUpdateOne struct {
 // SetUpdateTime sets the "update_time" field.
 func (suo *ServerUpdateOne) SetUpdateTime(t time.Time) *ServerUpdateOne {
 	suo.mutation.SetUpdateTime(t)
+	return suo
+}
+
+// SetServerID sets the "server_id" field.
+func (suo *ServerUpdateOne) SetServerID(s string) *ServerUpdateOne {
+	suo.mutation.SetServerID(s)
+	return suo
+}
+
+// SetNillableServerID sets the "server_id" field if the given value is not nil.
+func (suo *ServerUpdateOne) SetNillableServerID(s *string) *ServerUpdateOne {
+	if s != nil {
+		suo.SetServerID(*s)
+	}
 	return suo
 }
 
@@ -335,6 +503,25 @@ func (suo *ServerUpdateOne) SetConfiguration(s *ServerConfig) *ServerUpdateOne {
 	return suo.SetConfigurationID(s.ID)
 }
 
+// SetSpammerID sets the "spammer" edge to the Spammer entity by ID.
+func (suo *ServerUpdateOne) SetSpammerID(id int) *ServerUpdateOne {
+	suo.mutation.SetSpammerID(id)
+	return suo
+}
+
+// SetNillableSpammerID sets the "spammer" edge to the Spammer entity by ID if the given value is not nil.
+func (suo *ServerUpdateOne) SetNillableSpammerID(id *int) *ServerUpdateOne {
+	if id != nil {
+		suo = suo.SetSpammerID(*id)
+	}
+	return suo
+}
+
+// SetSpammer sets the "spammer" edge to the Spammer entity.
+func (suo *ServerUpdateOne) SetSpammer(s *Spammer) *ServerUpdateOne {
+	return suo.SetSpammerID(s.ID)
+}
+
 // AddWordBlacklistIDs adds the "word_blacklist" edge to the WordBlacklist entity by IDs.
 func (suo *ServerUpdateOne) AddWordBlacklistIDs(ids ...int) *ServerUpdateOne {
 	suo.mutation.AddWordBlacklistIDs(ids...)
@@ -350,6 +537,21 @@ func (suo *ServerUpdateOne) AddWordBlacklist(w ...*WordBlacklist) *ServerUpdateO
 	return suo.AddWordBlacklistIDs(ids...)
 }
 
+// AddCooldownIDs adds the "cooldown" edge to the Cooldown entity by IDs.
+func (suo *ServerUpdateOne) AddCooldownIDs(ids ...int) *ServerUpdateOne {
+	suo.mutation.AddCooldownIDs(ids...)
+	return suo
+}
+
+// AddCooldown adds the "cooldown" edges to the Cooldown entity.
+func (suo *ServerUpdateOne) AddCooldown(c ...*Cooldown) *ServerUpdateOne {
+	ids := make([]int, len(c))
+	for i := range c {
+		ids[i] = c[i].ID
+	}
+	return suo.AddCooldownIDs(ids...)
+}
+
 // Mutation returns the ServerMutation object of the builder.
 func (suo *ServerUpdateOne) Mutation() *ServerMutation {
 	return suo.mutation
@@ -358,6 +560,12 @@ func (suo *ServerUpdateOne) Mutation() *ServerMutation {
 // ClearConfiguration clears the "configuration" edge to the ServerConfig entity.
 func (suo *ServerUpdateOne) ClearConfiguration() *ServerUpdateOne {
 	suo.mutation.ClearConfiguration()
+	return suo
+}
+
+// ClearSpammer clears the "spammer" edge to the Spammer entity.
+func (suo *ServerUpdateOne) ClearSpammer() *ServerUpdateOne {
+	suo.mutation.ClearSpammer()
 	return suo
 }
 
@@ -380,6 +588,27 @@ func (suo *ServerUpdateOne) RemoveWordBlacklist(w ...*WordBlacklist) *ServerUpda
 		ids[i] = w[i].ID
 	}
 	return suo.RemoveWordBlacklistIDs(ids...)
+}
+
+// ClearCooldown clears all "cooldown" edges to the Cooldown entity.
+func (suo *ServerUpdateOne) ClearCooldown() *ServerUpdateOne {
+	suo.mutation.ClearCooldown()
+	return suo
+}
+
+// RemoveCooldownIDs removes the "cooldown" edge to Cooldown entities by IDs.
+func (suo *ServerUpdateOne) RemoveCooldownIDs(ids ...int) *ServerUpdateOne {
+	suo.mutation.RemoveCooldownIDs(ids...)
+	return suo
+}
+
+// RemoveCooldown removes "cooldown" edges to Cooldown entities.
+func (suo *ServerUpdateOne) RemoveCooldown(c ...*Cooldown) *ServerUpdateOne {
+	ids := make([]int, len(c))
+	for i := range c {
+		ids[i] = c[i].ID
+	}
+	return suo.RemoveCooldownIDs(ids...)
 }
 
 // Where appends a list predicates to the ServerUpdate builder.
@@ -449,7 +678,7 @@ func (suo *ServerUpdateOne) sqlSave(ctx context.Context) (_node *Server, err err
 	if err := suo.check(); err != nil {
 		return _node, err
 	}
-	_spec := sqlgraph.NewUpdateSpec(server.Table, server.Columns, sqlgraph.NewFieldSpec(server.FieldID, field.TypeString))
+	_spec := sqlgraph.NewUpdateSpec(server.Table, server.Columns, sqlgraph.NewFieldSpec(server.FieldID, field.TypeInt))
 	id, ok := suo.mutation.ID()
 	if !ok {
 		return nil, &ValidationError{Name: "id", err: errors.New(`ent: missing "Server.id" for update`)}
@@ -477,6 +706,9 @@ func (suo *ServerUpdateOne) sqlSave(ctx context.Context) (_node *Server, err err
 	if value, ok := suo.mutation.UpdateTime(); ok {
 		_spec.SetField(server.FieldUpdateTime, field.TypeTime, value)
 	}
+	if value, ok := suo.mutation.ServerID(); ok {
+		_spec.SetField(server.FieldServerID, field.TypeString, value)
+	}
 	if value, ok := suo.mutation.OwnerID(); ok {
 		_spec.SetField(server.FieldOwnerID, field.TypeString, value)
 	}
@@ -485,7 +717,7 @@ func (suo *ServerUpdateOne) sqlSave(ctx context.Context) (_node *Server, err err
 	}
 	if suo.mutation.ConfigurationCleared() {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2O,
+			Rel:     sqlgraph.O2O,
 			Inverse: false,
 			Table:   server.ConfigurationTable,
 			Columns: []string{server.ConfigurationColumn},
@@ -498,13 +730,42 @@ func (suo *ServerUpdateOne) sqlSave(ctx context.Context) (_node *Server, err err
 	}
 	if nodes := suo.mutation.ConfigurationIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2O,
+			Rel:     sqlgraph.O2O,
 			Inverse: false,
 			Table:   server.ConfigurationTable,
 			Columns: []string{server.ConfigurationColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(serverconfig.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if suo.mutation.SpammerCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   server.SpammerTable,
+			Columns: []string{server.SpammerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(spammer.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := suo.mutation.SpammerIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   server.SpammerTable,
+			Columns: []string{server.SpammerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(spammer.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {
@@ -550,6 +811,51 @@ func (suo *ServerUpdateOne) sqlSave(ctx context.Context) (_node *Server, err err
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(wordblacklist.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if suo.mutation.CooldownCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   server.CooldownTable,
+			Columns: []string{server.CooldownColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(cooldown.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := suo.mutation.RemovedCooldownIDs(); len(nodes) > 0 && !suo.mutation.CooldownCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   server.CooldownTable,
+			Columns: []string{server.CooldownColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(cooldown.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := suo.mutation.CooldownIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   server.CooldownTable,
+			Columns: []string{server.CooldownColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(cooldown.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {

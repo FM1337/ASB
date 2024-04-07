@@ -15,8 +15,10 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/FM1337/ASB/internal/ent/cooldown"
 	"github.com/FM1337/ASB/internal/ent/server"
 	"github.com/FM1337/ASB/internal/ent/serverconfig"
+	"github.com/FM1337/ASB/internal/ent/spammer"
 	"github.com/FM1337/ASB/internal/ent/wordblacklist"
 )
 
@@ -25,10 +27,14 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// Cooldown is the client for interacting with the Cooldown builders.
+	Cooldown *CooldownClient
 	// Server is the client for interacting with the Server builders.
 	Server *ServerClient
 	// ServerConfig is the client for interacting with the ServerConfig builders.
 	ServerConfig *ServerConfigClient
+	// Spammer is the client for interacting with the Spammer builders.
+	Spammer *SpammerClient
 	// WordBlacklist is the client for interacting with the WordBlacklist builders.
 	WordBlacklist *WordBlacklistClient
 }
@@ -42,8 +48,10 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.Cooldown = NewCooldownClient(c.config)
 	c.Server = NewServerClient(c.config)
 	c.ServerConfig = NewServerConfigClient(c.config)
+	c.Spammer = NewSpammerClient(c.config)
 	c.WordBlacklist = NewWordBlacklistClient(c.config)
 }
 
@@ -137,8 +145,10 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	return &Tx{
 		ctx:           ctx,
 		config:        cfg,
+		Cooldown:      NewCooldownClient(cfg),
 		Server:        NewServerClient(cfg),
 		ServerConfig:  NewServerConfigClient(cfg),
+		Spammer:       NewSpammerClient(cfg),
 		WordBlacklist: NewWordBlacklistClient(cfg),
 	}, nil
 }
@@ -159,8 +169,10 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	return &Tx{
 		ctx:           ctx,
 		config:        cfg,
+		Cooldown:      NewCooldownClient(cfg),
 		Server:        NewServerClient(cfg),
 		ServerConfig:  NewServerConfigClient(cfg),
+		Spammer:       NewSpammerClient(cfg),
 		WordBlacklist: NewWordBlacklistClient(cfg),
 	}, nil
 }
@@ -168,7 +180,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		Server.
+//		Cooldown.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -190,30 +202,187 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
+	c.Cooldown.Use(hooks...)
 	c.Server.Use(hooks...)
 	c.ServerConfig.Use(hooks...)
+	c.Spammer.Use(hooks...)
 	c.WordBlacklist.Use(hooks...)
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
+	c.Cooldown.Intercept(interceptors...)
 	c.Server.Intercept(interceptors...)
 	c.ServerConfig.Intercept(interceptors...)
+	c.Spammer.Intercept(interceptors...)
 	c.WordBlacklist.Intercept(interceptors...)
 }
 
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *CooldownMutation:
+		return c.Cooldown.mutate(ctx, m)
 	case *ServerMutation:
 		return c.Server.mutate(ctx, m)
 	case *ServerConfigMutation:
 		return c.ServerConfig.mutate(ctx, m)
+	case *SpammerMutation:
+		return c.Spammer.mutate(ctx, m)
 	case *WordBlacklistMutation:
 		return c.WordBlacklist.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// CooldownClient is a client for the Cooldown schema.
+type CooldownClient struct {
+	config
+}
+
+// NewCooldownClient returns a client for the Cooldown from the given config.
+func NewCooldownClient(c config) *CooldownClient {
+	return &CooldownClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `cooldown.Hooks(f(g(h())))`.
+func (c *CooldownClient) Use(hooks ...Hook) {
+	c.hooks.Cooldown = append(c.hooks.Cooldown, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `cooldown.Intercept(f(g(h())))`.
+func (c *CooldownClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Cooldown = append(c.inters.Cooldown, interceptors...)
+}
+
+// Create returns a builder for creating a Cooldown entity.
+func (c *CooldownClient) Create() *CooldownCreate {
+	mutation := newCooldownMutation(c.config, OpCreate)
+	return &CooldownCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Cooldown entities.
+func (c *CooldownClient) CreateBulk(builders ...*CooldownCreate) *CooldownCreateBulk {
+	return &CooldownCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CooldownClient) MapCreateBulk(slice any, setFunc func(*CooldownCreate, int)) *CooldownCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CooldownCreateBulk{err: fmt.Errorf("calling to CooldownClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CooldownCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CooldownCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Cooldown.
+func (c *CooldownClient) Update() *CooldownUpdate {
+	mutation := newCooldownMutation(c.config, OpUpdate)
+	return &CooldownUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CooldownClient) UpdateOne(co *Cooldown) *CooldownUpdateOne {
+	mutation := newCooldownMutation(c.config, OpUpdateOne, withCooldown(co))
+	return &CooldownUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CooldownClient) UpdateOneID(id int) *CooldownUpdateOne {
+	mutation := newCooldownMutation(c.config, OpUpdateOne, withCooldownID(id))
+	return &CooldownUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Cooldown.
+func (c *CooldownClient) Delete() *CooldownDelete {
+	mutation := newCooldownMutation(c.config, OpDelete)
+	return &CooldownDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CooldownClient) DeleteOne(co *Cooldown) *CooldownDeleteOne {
+	return c.DeleteOneID(co.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CooldownClient) DeleteOneID(id int) *CooldownDeleteOne {
+	builder := c.Delete().Where(cooldown.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CooldownDeleteOne{builder}
+}
+
+// Query returns a query builder for Cooldown.
+func (c *CooldownClient) Query() *CooldownQuery {
+	return &CooldownQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCooldown},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Cooldown entity by its id.
+func (c *CooldownClient) Get(ctx context.Context, id int) (*Cooldown, error) {
+	return c.Query().Where(cooldown.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CooldownClient) GetX(ctx context.Context, id int) *Cooldown {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryServer queries the server edge of a Cooldown.
+func (c *CooldownClient) QueryServer(co *Cooldown) *ServerQuery {
+	query := (&ServerClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := co.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(cooldown.Table, cooldown.FieldID, id),
+			sqlgraph.To(server.Table, server.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, cooldown.ServerTable, cooldown.ServerColumn),
+		)
+		fromV = sqlgraph.Neighbors(co.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *CooldownClient) Hooks() []Hook {
+	return c.hooks.Cooldown
+}
+
+// Interceptors returns the client interceptors.
+func (c *CooldownClient) Interceptors() []Interceptor {
+	return c.inters.Cooldown
+}
+
+func (c *CooldownClient) mutate(ctx context.Context, m *CooldownMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CooldownCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CooldownUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CooldownUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CooldownDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Cooldown mutation op: %q", m.Op())
 	}
 }
 
@@ -278,7 +447,7 @@ func (c *ServerClient) UpdateOne(s *Server) *ServerUpdateOne {
 }
 
 // UpdateOneID returns an update builder for the given id.
-func (c *ServerClient) UpdateOneID(id string) *ServerUpdateOne {
+func (c *ServerClient) UpdateOneID(id int) *ServerUpdateOne {
 	mutation := newServerMutation(c.config, OpUpdateOne, withServerID(id))
 	return &ServerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
@@ -295,7 +464,7 @@ func (c *ServerClient) DeleteOne(s *Server) *ServerDeleteOne {
 }
 
 // DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *ServerClient) DeleteOneID(id string) *ServerDeleteOne {
+func (c *ServerClient) DeleteOneID(id int) *ServerDeleteOne {
 	builder := c.Delete().Where(server.ID(id))
 	builder.mutation.id = &id
 	builder.mutation.op = OpDeleteOne
@@ -312,12 +481,12 @@ func (c *ServerClient) Query() *ServerQuery {
 }
 
 // Get returns a Server entity by its id.
-func (c *ServerClient) Get(ctx context.Context, id string) (*Server, error) {
+func (c *ServerClient) Get(ctx context.Context, id int) (*Server, error) {
 	return c.Query().Where(server.ID(id)).Only(ctx)
 }
 
 // GetX is like Get, but panics if an error occurs.
-func (c *ServerClient) GetX(ctx context.Context, id string) *Server {
+func (c *ServerClient) GetX(ctx context.Context, id int) *Server {
 	obj, err := c.Get(ctx, id)
 	if err != nil {
 		panic(err)
@@ -333,7 +502,23 @@ func (c *ServerClient) QueryConfiguration(s *Server) *ServerConfigQuery {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(server.Table, server.FieldID, id),
 			sqlgraph.To(serverconfig.Table, serverconfig.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, server.ConfigurationTable, server.ConfigurationColumn),
+			sqlgraph.Edge(sqlgraph.O2O, false, server.ConfigurationTable, server.ConfigurationColumn),
+		)
+		fromV = sqlgraph.Neighbors(s.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QuerySpammer queries the spammer edge of a Server.
+func (c *ServerClient) QuerySpammer(s *Server) *SpammerQuery {
+	query := (&SpammerClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := s.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(server.Table, server.FieldID, id),
+			sqlgraph.To(spammer.Table, spammer.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, server.SpammerTable, server.SpammerColumn),
 		)
 		fromV = sqlgraph.Neighbors(s.driver.Dialect(), step)
 		return fromV, nil
@@ -350,6 +535,22 @@ func (c *ServerClient) QueryWordBlacklist(s *Server) *WordBlacklistQuery {
 			sqlgraph.From(server.Table, server.FieldID, id),
 			sqlgraph.To(wordblacklist.Table, wordblacklist.FieldID),
 			sqlgraph.Edge(sqlgraph.M2M, false, server.WordBlacklistTable, server.WordBlacklistPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(s.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryCooldown queries the cooldown edge of a Server.
+func (c *ServerClient) QueryCooldown(s *Server) *CooldownQuery {
+	query := (&CooldownClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := s.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(server.Table, server.FieldID, id),
+			sqlgraph.To(cooldown.Table, cooldown.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, server.CooldownTable, server.CooldownColumn),
 		)
 		fromV = sqlgraph.Neighbors(s.driver.Dialect(), step)
 		return fromV, nil
@@ -498,7 +699,7 @@ func (c *ServerConfigClient) QueryServer(sc *ServerConfig) *ServerQuery {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(serverconfig.Table, serverconfig.FieldID, id),
 			sqlgraph.To(server.Table, server.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, true, serverconfig.ServerTable, serverconfig.ServerColumn),
+			sqlgraph.Edge(sqlgraph.O2O, true, serverconfig.ServerTable, serverconfig.ServerColumn),
 		)
 		fromV = sqlgraph.Neighbors(sc.driver.Dialect(), step)
 		return fromV, nil
@@ -528,6 +729,155 @@ func (c *ServerConfigClient) mutate(ctx context.Context, m *ServerConfigMutation
 		return (&ServerConfigDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ServerConfig mutation op: %q", m.Op())
+	}
+}
+
+// SpammerClient is a client for the Spammer schema.
+type SpammerClient struct {
+	config
+}
+
+// NewSpammerClient returns a client for the Spammer from the given config.
+func NewSpammerClient(c config) *SpammerClient {
+	return &SpammerClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `spammer.Hooks(f(g(h())))`.
+func (c *SpammerClient) Use(hooks ...Hook) {
+	c.hooks.Spammer = append(c.hooks.Spammer, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `spammer.Intercept(f(g(h())))`.
+func (c *SpammerClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Spammer = append(c.inters.Spammer, interceptors...)
+}
+
+// Create returns a builder for creating a Spammer entity.
+func (c *SpammerClient) Create() *SpammerCreate {
+	mutation := newSpammerMutation(c.config, OpCreate)
+	return &SpammerCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Spammer entities.
+func (c *SpammerClient) CreateBulk(builders ...*SpammerCreate) *SpammerCreateBulk {
+	return &SpammerCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SpammerClient) MapCreateBulk(slice any, setFunc func(*SpammerCreate, int)) *SpammerCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SpammerCreateBulk{err: fmt.Errorf("calling to SpammerClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SpammerCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SpammerCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Spammer.
+func (c *SpammerClient) Update() *SpammerUpdate {
+	mutation := newSpammerMutation(c.config, OpUpdate)
+	return &SpammerUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SpammerClient) UpdateOne(s *Spammer) *SpammerUpdateOne {
+	mutation := newSpammerMutation(c.config, OpUpdateOne, withSpammer(s))
+	return &SpammerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SpammerClient) UpdateOneID(id int) *SpammerUpdateOne {
+	mutation := newSpammerMutation(c.config, OpUpdateOne, withSpammerID(id))
+	return &SpammerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Spammer.
+func (c *SpammerClient) Delete() *SpammerDelete {
+	mutation := newSpammerMutation(c.config, OpDelete)
+	return &SpammerDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SpammerClient) DeleteOne(s *Spammer) *SpammerDeleteOne {
+	return c.DeleteOneID(s.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SpammerClient) DeleteOneID(id int) *SpammerDeleteOne {
+	builder := c.Delete().Where(spammer.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SpammerDeleteOne{builder}
+}
+
+// Query returns a query builder for Spammer.
+func (c *SpammerClient) Query() *SpammerQuery {
+	return &SpammerQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSpammer},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Spammer entity by its id.
+func (c *SpammerClient) Get(ctx context.Context, id int) (*Spammer, error) {
+	return c.Query().Where(spammer.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SpammerClient) GetX(ctx context.Context, id int) *Spammer {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryServer queries the server edge of a Spammer.
+func (c *SpammerClient) QueryServer(s *Spammer) *ServerQuery {
+	query := (&ServerClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := s.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(spammer.Table, spammer.FieldID, id),
+			sqlgraph.To(server.Table, server.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, true, spammer.ServerTable, spammer.ServerColumn),
+		)
+		fromV = sqlgraph.Neighbors(s.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *SpammerClient) Hooks() []Hook {
+	return c.hooks.Spammer
+}
+
+// Interceptors returns the client interceptors.
+func (c *SpammerClient) Interceptors() []Interceptor {
+	return c.inters.Spammer
+}
+
+func (c *SpammerClient) mutate(ctx context.Context, m *SpammerMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SpammerCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SpammerUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SpammerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SpammerDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Spammer mutation op: %q", m.Op())
 	}
 }
 
@@ -683,9 +1033,9 @@ func (c *WordBlacklistClient) mutate(ctx context.Context, m *WordBlacklistMutati
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Server, ServerConfig, WordBlacklist []ent.Hook
+		Cooldown, Server, ServerConfig, Spammer, WordBlacklist []ent.Hook
 	}
 	inters struct {
-		Server, ServerConfig, WordBlacklist []ent.Interceptor
+		Cooldown, Server, ServerConfig, Spammer, WordBlacklist []ent.Interceptor
 	}
 )

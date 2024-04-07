@@ -12,8 +12,10 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/FM1337/ASB/internal/ent/cooldown"
 	"github.com/FM1337/ASB/internal/ent/server"
 	"github.com/FM1337/ASB/internal/ent/serverconfig"
+	"github.com/FM1337/ASB/internal/ent/spammer"
 	"github.com/FM1337/ASB/internal/ent/wordblacklist"
 )
 
@@ -75,8 +77,10 @@ var (
 func checkColumn(table, column string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
+			cooldown.Table:      cooldown.ValidColumn,
 			server.Table:        server.ValidColumn,
 			serverconfig.Table:  serverconfig.ValidColumn,
+			spammer.Table:       spammer.ValidColumn,
 			wordblacklist.Table: wordblacklist.ValidColumn,
 		})
 	})

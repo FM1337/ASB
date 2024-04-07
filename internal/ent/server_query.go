@@ -11,9 +11,11 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/FM1337/ASB/internal/ent/cooldown"
 	"github.com/FM1337/ASB/internal/ent/predicate"
 	"github.com/FM1337/ASB/internal/ent/server"
 	"github.com/FM1337/ASB/internal/ent/serverconfig"
+	"github.com/FM1337/ASB/internal/ent/spammer"
 	"github.com/FM1337/ASB/internal/ent/wordblacklist"
 )
 
@@ -25,8 +27,9 @@ type ServerQuery struct {
 	inters            []Interceptor
 	predicates        []predicate.Server
 	withConfiguration *ServerConfigQuery
+	withSpammer       *SpammerQuery
 	withWordBlacklist *WordBlacklistQuery
-	withFKs           bool
+	withCooldown      *CooldownQuery
 	modifiers         []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -78,7 +81,29 @@ func (sq *ServerQuery) QueryConfiguration() *ServerConfigQuery {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(server.Table, server.FieldID, selector),
 			sqlgraph.To(serverconfig.Table, serverconfig.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, server.ConfigurationTable, server.ConfigurationColumn),
+			sqlgraph.Edge(sqlgraph.O2O, false, server.ConfigurationTable, server.ConfigurationColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(sq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QuerySpammer chains the current query on the "spammer" edge.
+func (sq *ServerQuery) QuerySpammer() *SpammerQuery {
+	query := (&SpammerClient{config: sq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := sq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := sq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(server.Table, server.FieldID, selector),
+			sqlgraph.To(spammer.Table, spammer.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, server.SpammerTable, server.SpammerColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(sq.driver.Dialect(), step)
 		return fromU, nil
@@ -101,6 +126,28 @@ func (sq *ServerQuery) QueryWordBlacklist() *WordBlacklistQuery {
 			sqlgraph.From(server.Table, server.FieldID, selector),
 			sqlgraph.To(wordblacklist.Table, wordblacklist.FieldID),
 			sqlgraph.Edge(sqlgraph.M2M, false, server.WordBlacklistTable, server.WordBlacklistPrimaryKey...),
+		)
+		fromU = sqlgraph.SetNeighbors(sq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryCooldown chains the current query on the "cooldown" edge.
+func (sq *ServerQuery) QueryCooldown() *CooldownQuery {
+	query := (&CooldownClient{config: sq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := sq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := sq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(server.Table, server.FieldID, selector),
+			sqlgraph.To(cooldown.Table, cooldown.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, server.CooldownTable, server.CooldownColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(sq.driver.Dialect(), step)
 		return fromU, nil
@@ -132,8 +179,8 @@ func (sq *ServerQuery) FirstX(ctx context.Context) *Server {
 
 // FirstID returns the first Server ID from the query.
 // Returns a *NotFoundError when no Server ID was found.
-func (sq *ServerQuery) FirstID(ctx context.Context) (id string, err error) {
-	var ids []string
+func (sq *ServerQuery) FirstID(ctx context.Context) (id int, err error) {
+	var ids []int
 	if ids, err = sq.Limit(1).IDs(setContextOp(ctx, sq.ctx, "FirstID")); err != nil {
 		return
 	}
@@ -145,7 +192,7 @@ func (sq *ServerQuery) FirstID(ctx context.Context) (id string, err error) {
 }
 
 // FirstIDX is like FirstID, but panics if an error occurs.
-func (sq *ServerQuery) FirstIDX(ctx context.Context) string {
+func (sq *ServerQuery) FirstIDX(ctx context.Context) int {
 	id, err := sq.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -183,8 +230,8 @@ func (sq *ServerQuery) OnlyX(ctx context.Context) *Server {
 // OnlyID is like Only, but returns the only Server ID in the query.
 // Returns a *NotSingularError when more than one Server ID is found.
 // Returns a *NotFoundError when no entities are found.
-func (sq *ServerQuery) OnlyID(ctx context.Context) (id string, err error) {
-	var ids []string
+func (sq *ServerQuery) OnlyID(ctx context.Context) (id int, err error) {
+	var ids []int
 	if ids, err = sq.Limit(2).IDs(setContextOp(ctx, sq.ctx, "OnlyID")); err != nil {
 		return
 	}
@@ -200,7 +247,7 @@ func (sq *ServerQuery) OnlyID(ctx context.Context) (id string, err error) {
 }
 
 // OnlyIDX is like OnlyID, but panics if an error occurs.
-func (sq *ServerQuery) OnlyIDX(ctx context.Context) string {
+func (sq *ServerQuery) OnlyIDX(ctx context.Context) int {
 	id, err := sq.OnlyID(ctx)
 	if err != nil {
 		panic(err)
@@ -228,7 +275,7 @@ func (sq *ServerQuery) AllX(ctx context.Context) []*Server {
 }
 
 // IDs executes the query and returns a list of Server IDs.
-func (sq *ServerQuery) IDs(ctx context.Context) (ids []string, err error) {
+func (sq *ServerQuery) IDs(ctx context.Context) (ids []int, err error) {
 	if sq.ctx.Unique == nil && sq.path != nil {
 		sq.Unique(true)
 	}
@@ -240,7 +287,7 @@ func (sq *ServerQuery) IDs(ctx context.Context) (ids []string, err error) {
 }
 
 // IDsX is like IDs, but panics if an error occurs.
-func (sq *ServerQuery) IDsX(ctx context.Context) []string {
+func (sq *ServerQuery) IDsX(ctx context.Context) []int {
 	ids, err := sq.IDs(ctx)
 	if err != nil {
 		panic(err)
@@ -301,7 +348,9 @@ func (sq *ServerQuery) Clone() *ServerQuery {
 		inters:            append([]Interceptor{}, sq.inters...),
 		predicates:        append([]predicate.Server{}, sq.predicates...),
 		withConfiguration: sq.withConfiguration.Clone(),
+		withSpammer:       sq.withSpammer.Clone(),
 		withWordBlacklist: sq.withWordBlacklist.Clone(),
+		withCooldown:      sq.withCooldown.Clone(),
 		// clone intermediate query.
 		sql:  sq.sql.Clone(),
 		path: sq.path,
@@ -319,6 +368,17 @@ func (sq *ServerQuery) WithConfiguration(opts ...func(*ServerConfigQuery)) *Serv
 	return sq
 }
 
+// WithSpammer tells the query-builder to eager-load the nodes that are connected to
+// the "spammer" edge. The optional arguments are used to configure the query builder of the edge.
+func (sq *ServerQuery) WithSpammer(opts ...func(*SpammerQuery)) *ServerQuery {
+	query := (&SpammerClient{config: sq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	sq.withSpammer = query
+	return sq
+}
+
 // WithWordBlacklist tells the query-builder to eager-load the nodes that are connected to
 // the "word_blacklist" edge. The optional arguments are used to configure the query builder of the edge.
 func (sq *ServerQuery) WithWordBlacklist(opts ...func(*WordBlacklistQuery)) *ServerQuery {
@@ -327,6 +387,17 @@ func (sq *ServerQuery) WithWordBlacklist(opts ...func(*WordBlacklistQuery)) *Ser
 		opt(query)
 	}
 	sq.withWordBlacklist = query
+	return sq
+}
+
+// WithCooldown tells the query-builder to eager-load the nodes that are connected to
+// the "cooldown" edge. The optional arguments are used to configure the query builder of the edge.
+func (sq *ServerQuery) WithCooldown(opts ...func(*CooldownQuery)) *ServerQuery {
+	query := (&CooldownClient{config: sq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	sq.withCooldown = query
 	return sq
 }
 
@@ -407,19 +478,14 @@ func (sq *ServerQuery) prepareQuery(ctx context.Context) error {
 func (sq *ServerQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Server, error) {
 	var (
 		nodes       = []*Server{}
-		withFKs     = sq.withFKs
 		_spec       = sq.querySpec()
-		loadedTypes = [2]bool{
+		loadedTypes = [4]bool{
 			sq.withConfiguration != nil,
+			sq.withSpammer != nil,
 			sq.withWordBlacklist != nil,
+			sq.withCooldown != nil,
 		}
 	)
-	if sq.withConfiguration != nil {
-		withFKs = true
-	}
-	if withFKs {
-		_spec.Node.Columns = append(_spec.Node.Columns, server.ForeignKeys...)
-	}
 	_spec.ScanValues = func(columns []string) ([]any, error) {
 		return (*Server).scanValues(nil, columns)
 	}
@@ -447,6 +513,12 @@ func (sq *ServerQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Serve
 			return nil, err
 		}
 	}
+	if query := sq.withSpammer; query != nil {
+		if err := sq.loadSpammer(ctx, query, nodes, nil,
+			func(n *Server, e *Spammer) { n.Edges.Spammer = e }); err != nil {
+			return nil, err
+		}
+	}
 	if query := sq.withWordBlacklist; query != nil {
 		if err := sq.loadWordBlacklist(ctx, query, nodes,
 			func(n *Server) { n.Edges.WordBlacklist = []*WordBlacklist{} },
@@ -454,44 +526,75 @@ func (sq *ServerQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Serve
 			return nil, err
 		}
 	}
+	if query := sq.withCooldown; query != nil {
+		if err := sq.loadCooldown(ctx, query, nodes,
+			func(n *Server) { n.Edges.Cooldown = []*Cooldown{} },
+			func(n *Server, e *Cooldown) { n.Edges.Cooldown = append(n.Edges.Cooldown, e) }); err != nil {
+			return nil, err
+		}
+	}
 	return nodes, nil
 }
 
 func (sq *ServerQuery) loadConfiguration(ctx context.Context, query *ServerConfigQuery, nodes []*Server, init func(*Server), assign func(*Server, *ServerConfig)) error {
-	ids := make([]int, 0, len(nodes))
-	nodeids := make(map[int][]*Server)
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int]*Server)
 	for i := range nodes {
-		if nodes[i].server_configuration == nil {
-			continue
-		}
-		fk := *nodes[i].server_configuration
-		if _, ok := nodeids[fk]; !ok {
-			ids = append(ids, fk)
-		}
-		nodeids[fk] = append(nodeids[fk], nodes[i])
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
 	}
-	if len(ids) == 0 {
-		return nil
-	}
-	query.Where(serverconfig.IDIn(ids...))
+	query.withFKs = true
+	query.Where(predicate.ServerConfig(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(server.ConfigurationColumn), fks...))
+	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {
 		return err
 	}
 	for _, n := range neighbors {
-		nodes, ok := nodeids[n.ID]
+		fk := n.server_configuration
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "server_configuration" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
 		if !ok {
-			return fmt.Errorf(`unexpected foreign-key "server_configuration" returned %v`, n.ID)
+			return fmt.Errorf(`unexpected referenced foreign-key "server_configuration" returned %v for node %v`, *fk, n.ID)
 		}
-		for i := range nodes {
-			assign(nodes[i], n)
+		assign(node, n)
+	}
+	return nil
+}
+func (sq *ServerQuery) loadSpammer(ctx context.Context, query *SpammerQuery, nodes []*Server, init func(*Server), assign func(*Server, *Spammer)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int]*Server)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+	}
+	query.withFKs = true
+	query.Where(predicate.Spammer(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(server.SpammerColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.server_spammer
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "server_spammer" is nil for node %v`, n.ID)
 		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "server_spammer" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
 	}
 	return nil
 }
 func (sq *ServerQuery) loadWordBlacklist(ctx context.Context, query *WordBlacklistQuery, nodes []*Server, init func(*Server), assign func(*Server, *WordBlacklist)) error {
 	edgeIDs := make([]driver.Value, len(nodes))
-	byID := make(map[string]*Server)
+	byID := make(map[int]*Server)
 	nids := make(map[int]map[*Server]struct{})
 	for i, node := range nodes {
 		edgeIDs[i] = node.ID
@@ -521,10 +624,10 @@ func (sq *ServerQuery) loadWordBlacklist(ctx context.Context, query *WordBlackli
 				if err != nil {
 					return nil, err
 				}
-				return append([]any{new(sql.NullString)}, values...), nil
+				return append([]any{new(sql.NullInt64)}, values...), nil
 			}
 			spec.Assign = func(columns []string, values []any) error {
-				outValue := values[0].(*sql.NullString).String
+				outValue := int(values[0].(*sql.NullInt64).Int64)
 				inValue := int(values[1].(*sql.NullInt64).Int64)
 				if nids[inValue] == nil {
 					nids[inValue] = map[*Server]struct{}{byID[outValue]: {}}
@@ -550,6 +653,37 @@ func (sq *ServerQuery) loadWordBlacklist(ctx context.Context, query *WordBlackli
 	}
 	return nil
 }
+func (sq *ServerQuery) loadCooldown(ctx context.Context, query *CooldownQuery, nodes []*Server, init func(*Server), assign func(*Server, *Cooldown)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int]*Server)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	query.withFKs = true
+	query.Where(predicate.Cooldown(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(server.CooldownColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.server_cooldown
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "server_cooldown" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "server_cooldown" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
 
 func (sq *ServerQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := sq.querySpec()
@@ -564,7 +698,7 @@ func (sq *ServerQuery) sqlCount(ctx context.Context) (int, error) {
 }
 
 func (sq *ServerQuery) querySpec() *sqlgraph.QuerySpec {
-	_spec := sqlgraph.NewQuerySpec(server.Table, server.Columns, sqlgraph.NewFieldSpec(server.FieldID, field.TypeString))
+	_spec := sqlgraph.NewQuerySpec(server.Table, server.Columns, sqlgraph.NewFieldSpec(server.FieldID, field.TypeInt))
 	_spec.From = sq.sql
 	if unique := sq.ctx.Unique; unique != nil {
 		_spec.Unique = *unique

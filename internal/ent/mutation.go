@@ -11,9 +11,11 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/FM1337/ASB/internal/ent/cooldown"
 	"github.com/FM1337/ASB/internal/ent/predicate"
 	"github.com/FM1337/ASB/internal/ent/server"
 	"github.com/FM1337/ASB/internal/ent/serverconfig"
+	"github.com/FM1337/ASB/internal/ent/spammer"
 	"github.com/FM1337/ASB/internal/ent/wordblacklist"
 )
 
@@ -26,27 +28,734 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
+	TypeCooldown      = "Cooldown"
 	TypeServer        = "Server"
 	TypeServerConfig  = "ServerConfig"
+	TypeSpammer       = "Spammer"
 	TypeWordBlacklist = "WordBlacklist"
 )
+
+// CooldownMutation represents an operation that mutates the Cooldown nodes in the graph.
+type CooldownMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int
+	create_time   *time.Time
+	update_time   *time.Time
+	user_id       *string
+	hash          *string
+	count         *int
+	addcount      *int
+	resets_at     *time.Time
+	clearedFields map[string]struct{}
+	server        *int
+	clearedserver bool
+	done          bool
+	oldValue      func(context.Context) (*Cooldown, error)
+	predicates    []predicate.Cooldown
+}
+
+var _ ent.Mutation = (*CooldownMutation)(nil)
+
+// cooldownOption allows management of the mutation configuration using functional options.
+type cooldownOption func(*CooldownMutation)
+
+// newCooldownMutation creates new mutation for the Cooldown entity.
+func newCooldownMutation(c config, op Op, opts ...cooldownOption) *CooldownMutation {
+	m := &CooldownMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCooldown,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCooldownID sets the ID field of the mutation.
+func withCooldownID(id int) cooldownOption {
+	return func(m *CooldownMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Cooldown
+		)
+		m.oldValue = func(ctx context.Context) (*Cooldown, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Cooldown.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCooldown sets the old Cooldown of the mutation.
+func withCooldown(node *Cooldown) cooldownOption {
+	return func(m *CooldownMutation) {
+		m.oldValue = func(context.Context) (*Cooldown, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CooldownMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CooldownMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CooldownMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CooldownMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Cooldown.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreateTime sets the "create_time" field.
+func (m *CooldownMutation) SetCreateTime(t time.Time) {
+	m.create_time = &t
+}
+
+// CreateTime returns the value of the "create_time" field in the mutation.
+func (m *CooldownMutation) CreateTime() (r time.Time, exists bool) {
+	v := m.create_time
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreateTime returns the old "create_time" field's value of the Cooldown entity.
+// If the Cooldown object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CooldownMutation) OldCreateTime(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreateTime is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreateTime requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreateTime: %w", err)
+	}
+	return oldValue.CreateTime, nil
+}
+
+// ResetCreateTime resets all changes to the "create_time" field.
+func (m *CooldownMutation) ResetCreateTime() {
+	m.create_time = nil
+}
+
+// SetUpdateTime sets the "update_time" field.
+func (m *CooldownMutation) SetUpdateTime(t time.Time) {
+	m.update_time = &t
+}
+
+// UpdateTime returns the value of the "update_time" field in the mutation.
+func (m *CooldownMutation) UpdateTime() (r time.Time, exists bool) {
+	v := m.update_time
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdateTime returns the old "update_time" field's value of the Cooldown entity.
+// If the Cooldown object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CooldownMutation) OldUpdateTime(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdateTime is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdateTime requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdateTime: %w", err)
+	}
+	return oldValue.UpdateTime, nil
+}
+
+// ResetUpdateTime resets all changes to the "update_time" field.
+func (m *CooldownMutation) ResetUpdateTime() {
+	m.update_time = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *CooldownMutation) SetUserID(s string) {
+	m.user_id = &s
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *CooldownMutation) UserID() (r string, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the Cooldown entity.
+// If the Cooldown object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CooldownMutation) OldUserID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *CooldownMutation) ResetUserID() {
+	m.user_id = nil
+}
+
+// SetHash sets the "hash" field.
+func (m *CooldownMutation) SetHash(s string) {
+	m.hash = &s
+}
+
+// Hash returns the value of the "hash" field in the mutation.
+func (m *CooldownMutation) Hash() (r string, exists bool) {
+	v := m.hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHash returns the old "hash" field's value of the Cooldown entity.
+// If the Cooldown object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CooldownMutation) OldHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHash: %w", err)
+	}
+	return oldValue.Hash, nil
+}
+
+// ResetHash resets all changes to the "hash" field.
+func (m *CooldownMutation) ResetHash() {
+	m.hash = nil
+}
+
+// SetCount sets the "count" field.
+func (m *CooldownMutation) SetCount(i int) {
+	m.count = &i
+	m.addcount = nil
+}
+
+// Count returns the value of the "count" field in the mutation.
+func (m *CooldownMutation) Count() (r int, exists bool) {
+	v := m.count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCount returns the old "count" field's value of the Cooldown entity.
+// If the Cooldown object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CooldownMutation) OldCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCount: %w", err)
+	}
+	return oldValue.Count, nil
+}
+
+// AddCount adds i to the "count" field.
+func (m *CooldownMutation) AddCount(i int) {
+	if m.addcount != nil {
+		*m.addcount += i
+	} else {
+		m.addcount = &i
+	}
+}
+
+// AddedCount returns the value that was added to the "count" field in this mutation.
+func (m *CooldownMutation) AddedCount() (r int, exists bool) {
+	v := m.addcount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCount resets all changes to the "count" field.
+func (m *CooldownMutation) ResetCount() {
+	m.count = nil
+	m.addcount = nil
+}
+
+// SetResetsAt sets the "resets_at" field.
+func (m *CooldownMutation) SetResetsAt(t time.Time) {
+	m.resets_at = &t
+}
+
+// ResetsAt returns the value of the "resets_at" field in the mutation.
+func (m *CooldownMutation) ResetsAt() (r time.Time, exists bool) {
+	v := m.resets_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResetsAt returns the old "resets_at" field's value of the Cooldown entity.
+// If the Cooldown object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CooldownMutation) OldResetsAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResetsAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResetsAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResetsAt: %w", err)
+	}
+	return oldValue.ResetsAt, nil
+}
+
+// ResetResetsAt resets all changes to the "resets_at" field.
+func (m *CooldownMutation) ResetResetsAt() {
+	m.resets_at = nil
+}
+
+// SetServerID sets the "server" edge to the Server entity by id.
+func (m *CooldownMutation) SetServerID(id int) {
+	m.server = &id
+}
+
+// ClearServer clears the "server" edge to the Server entity.
+func (m *CooldownMutation) ClearServer() {
+	m.clearedserver = true
+}
+
+// ServerCleared reports if the "server" edge to the Server entity was cleared.
+func (m *CooldownMutation) ServerCleared() bool {
+	return m.clearedserver
+}
+
+// ServerID returns the "server" edge ID in the mutation.
+func (m *CooldownMutation) ServerID() (id int, exists bool) {
+	if m.server != nil {
+		return *m.server, true
+	}
+	return
+}
+
+// ServerIDs returns the "server" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ServerID instead. It exists only for internal usage by the builders.
+func (m *CooldownMutation) ServerIDs() (ids []int) {
+	if id := m.server; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetServer resets all changes to the "server" edge.
+func (m *CooldownMutation) ResetServer() {
+	m.server = nil
+	m.clearedserver = false
+}
+
+// Where appends a list predicates to the CooldownMutation builder.
+func (m *CooldownMutation) Where(ps ...predicate.Cooldown) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CooldownMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CooldownMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Cooldown, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CooldownMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CooldownMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Cooldown).
+func (m *CooldownMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CooldownMutation) Fields() []string {
+	fields := make([]string, 0, 6)
+	if m.create_time != nil {
+		fields = append(fields, cooldown.FieldCreateTime)
+	}
+	if m.update_time != nil {
+		fields = append(fields, cooldown.FieldUpdateTime)
+	}
+	if m.user_id != nil {
+		fields = append(fields, cooldown.FieldUserID)
+	}
+	if m.hash != nil {
+		fields = append(fields, cooldown.FieldHash)
+	}
+	if m.count != nil {
+		fields = append(fields, cooldown.FieldCount)
+	}
+	if m.resets_at != nil {
+		fields = append(fields, cooldown.FieldResetsAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CooldownMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case cooldown.FieldCreateTime:
+		return m.CreateTime()
+	case cooldown.FieldUpdateTime:
+		return m.UpdateTime()
+	case cooldown.FieldUserID:
+		return m.UserID()
+	case cooldown.FieldHash:
+		return m.Hash()
+	case cooldown.FieldCount:
+		return m.Count()
+	case cooldown.FieldResetsAt:
+		return m.ResetsAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CooldownMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case cooldown.FieldCreateTime:
+		return m.OldCreateTime(ctx)
+	case cooldown.FieldUpdateTime:
+		return m.OldUpdateTime(ctx)
+	case cooldown.FieldUserID:
+		return m.OldUserID(ctx)
+	case cooldown.FieldHash:
+		return m.OldHash(ctx)
+	case cooldown.FieldCount:
+		return m.OldCount(ctx)
+	case cooldown.FieldResetsAt:
+		return m.OldResetsAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown Cooldown field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CooldownMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case cooldown.FieldCreateTime:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreateTime(v)
+		return nil
+	case cooldown.FieldUpdateTime:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdateTime(v)
+		return nil
+	case cooldown.FieldUserID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case cooldown.FieldHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHash(v)
+		return nil
+	case cooldown.FieldCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCount(v)
+		return nil
+	case cooldown.FieldResetsAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResetsAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Cooldown field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CooldownMutation) AddedFields() []string {
+	var fields []string
+	if m.addcount != nil {
+		fields = append(fields, cooldown.FieldCount)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CooldownMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case cooldown.FieldCount:
+		return m.AddedCount()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CooldownMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case cooldown.FieldCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCount(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Cooldown numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CooldownMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CooldownMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CooldownMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown Cooldown nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CooldownMutation) ResetField(name string) error {
+	switch name {
+	case cooldown.FieldCreateTime:
+		m.ResetCreateTime()
+		return nil
+	case cooldown.FieldUpdateTime:
+		m.ResetUpdateTime()
+		return nil
+	case cooldown.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case cooldown.FieldHash:
+		m.ResetHash()
+		return nil
+	case cooldown.FieldCount:
+		m.ResetCount()
+		return nil
+	case cooldown.FieldResetsAt:
+		m.ResetResetsAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Cooldown field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CooldownMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.server != nil {
+		edges = append(edges, cooldown.EdgeServer)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CooldownMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case cooldown.EdgeServer:
+		if id := m.server; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CooldownMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CooldownMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CooldownMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedserver {
+		edges = append(edges, cooldown.EdgeServer)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CooldownMutation) EdgeCleared(name string) bool {
+	switch name {
+	case cooldown.EdgeServer:
+		return m.clearedserver
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CooldownMutation) ClearEdge(name string) error {
+	switch name {
+	case cooldown.EdgeServer:
+		m.ClearServer()
+		return nil
+	}
+	return fmt.Errorf("unknown Cooldown unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CooldownMutation) ResetEdge(name string) error {
+	switch name {
+	case cooldown.EdgeServer:
+		m.ResetServer()
+		return nil
+	}
+	return fmt.Errorf("unknown Cooldown edge %s", name)
+}
 
 // ServerMutation represents an operation that mutates the Server nodes in the graph.
 type ServerMutation struct {
 	config
 	op                    Op
 	typ                   string
-	id                    *string
+	id                    *int
 	create_time           *time.Time
 	update_time           *time.Time
+	server_id             *string
 	owner_id              *string
 	enabled               *bool
 	clearedFields         map[string]struct{}
 	configuration         *int
 	clearedconfiguration  bool
+	spammer               *int
+	clearedspammer        bool
 	word_blacklist        map[int]struct{}
 	removedword_blacklist map[int]struct{}
 	clearedword_blacklist bool
+	cooldown              map[int]struct{}
+	removedcooldown       map[int]struct{}
+	clearedcooldown       bool
 	done                  bool
 	oldValue              func(context.Context) (*Server, error)
 	predicates            []predicate.Server
@@ -72,7 +781,7 @@ func newServerMutation(c config, op Op, opts ...serverOption) *ServerMutation {
 }
 
 // withServerID sets the ID field of the mutation.
-func withServerID(id string) serverOption {
+func withServerID(id int) serverOption {
 	return func(m *ServerMutation) {
 		var (
 			err   error
@@ -122,15 +831,9 @@ func (m ServerMutation) Tx() (*Tx, error) {
 	return tx, nil
 }
 
-// SetID sets the value of the id field. Note that this
-// operation is only accepted on creation of Server entities.
-func (m *ServerMutation) SetID(id string) {
-	m.id = &id
-}
-
 // ID returns the ID value in the mutation. Note that the ID is only available
 // if it was provided to the builder or after it was returned from the database.
-func (m *ServerMutation) ID() (id string, exists bool) {
+func (m *ServerMutation) ID() (id int, exists bool) {
 	if m.id == nil {
 		return
 	}
@@ -141,12 +844,12 @@ func (m *ServerMutation) ID() (id string, exists bool) {
 // That means, if the mutation is applied within a transaction with an isolation level such
 // as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
 // or updated by the mutation.
-func (m *ServerMutation) IDs(ctx context.Context) ([]string, error) {
+func (m *ServerMutation) IDs(ctx context.Context) ([]int, error) {
 	switch {
 	case m.op.Is(OpUpdateOne | OpDeleteOne):
 		id, exists := m.ID()
 		if exists {
-			return []string{id}, nil
+			return []int{id}, nil
 		}
 		fallthrough
 	case m.op.Is(OpUpdate | OpDelete):
@@ -226,6 +929,42 @@ func (m *ServerMutation) OldUpdateTime(ctx context.Context) (v time.Time, err er
 // ResetUpdateTime resets all changes to the "update_time" field.
 func (m *ServerMutation) ResetUpdateTime() {
 	m.update_time = nil
+}
+
+// SetServerID sets the "server_id" field.
+func (m *ServerMutation) SetServerID(s string) {
+	m.server_id = &s
+}
+
+// ServerID returns the value of the "server_id" field in the mutation.
+func (m *ServerMutation) ServerID() (r string, exists bool) {
+	v := m.server_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldServerID returns the old "server_id" field's value of the Server entity.
+// If the Server object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ServerMutation) OldServerID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldServerID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldServerID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldServerID: %w", err)
+	}
+	return oldValue.ServerID, nil
+}
+
+// ResetServerID resets all changes to the "server_id" field.
+func (m *ServerMutation) ResetServerID() {
+	m.server_id = nil
 }
 
 // SetOwnerID sets the "owner_id" field.
@@ -339,6 +1078,45 @@ func (m *ServerMutation) ResetConfiguration() {
 	m.clearedconfiguration = false
 }
 
+// SetSpammerID sets the "spammer" edge to the Spammer entity by id.
+func (m *ServerMutation) SetSpammerID(id int) {
+	m.spammer = &id
+}
+
+// ClearSpammer clears the "spammer" edge to the Spammer entity.
+func (m *ServerMutation) ClearSpammer() {
+	m.clearedspammer = true
+}
+
+// SpammerCleared reports if the "spammer" edge to the Spammer entity was cleared.
+func (m *ServerMutation) SpammerCleared() bool {
+	return m.clearedspammer
+}
+
+// SpammerID returns the "spammer" edge ID in the mutation.
+func (m *ServerMutation) SpammerID() (id int, exists bool) {
+	if m.spammer != nil {
+		return *m.spammer, true
+	}
+	return
+}
+
+// SpammerIDs returns the "spammer" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// SpammerID instead. It exists only for internal usage by the builders.
+func (m *ServerMutation) SpammerIDs() (ids []int) {
+	if id := m.spammer; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetSpammer resets all changes to the "spammer" edge.
+func (m *ServerMutation) ResetSpammer() {
+	m.spammer = nil
+	m.clearedspammer = false
+}
+
 // AddWordBlacklistIDs adds the "word_blacklist" edge to the WordBlacklist entity by ids.
 func (m *ServerMutation) AddWordBlacklistIDs(ids ...int) {
 	if m.word_blacklist == nil {
@@ -393,6 +1171,60 @@ func (m *ServerMutation) ResetWordBlacklist() {
 	m.removedword_blacklist = nil
 }
 
+// AddCooldownIDs adds the "cooldown" edge to the Cooldown entity by ids.
+func (m *ServerMutation) AddCooldownIDs(ids ...int) {
+	if m.cooldown == nil {
+		m.cooldown = make(map[int]struct{})
+	}
+	for i := range ids {
+		m.cooldown[ids[i]] = struct{}{}
+	}
+}
+
+// ClearCooldown clears the "cooldown" edge to the Cooldown entity.
+func (m *ServerMutation) ClearCooldown() {
+	m.clearedcooldown = true
+}
+
+// CooldownCleared reports if the "cooldown" edge to the Cooldown entity was cleared.
+func (m *ServerMutation) CooldownCleared() bool {
+	return m.clearedcooldown
+}
+
+// RemoveCooldownIDs removes the "cooldown" edge to the Cooldown entity by IDs.
+func (m *ServerMutation) RemoveCooldownIDs(ids ...int) {
+	if m.removedcooldown == nil {
+		m.removedcooldown = make(map[int]struct{})
+	}
+	for i := range ids {
+		delete(m.cooldown, ids[i])
+		m.removedcooldown[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedCooldown returns the removed IDs of the "cooldown" edge to the Cooldown entity.
+func (m *ServerMutation) RemovedCooldownIDs() (ids []int) {
+	for id := range m.removedcooldown {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// CooldownIDs returns the "cooldown" edge IDs in the mutation.
+func (m *ServerMutation) CooldownIDs() (ids []int) {
+	for id := range m.cooldown {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetCooldown resets all changes to the "cooldown" edge.
+func (m *ServerMutation) ResetCooldown() {
+	m.cooldown = nil
+	m.clearedcooldown = false
+	m.removedcooldown = nil
+}
+
 // Where appends a list predicates to the ServerMutation builder.
 func (m *ServerMutation) Where(ps ...predicate.Server) {
 	m.predicates = append(m.predicates, ps...)
@@ -427,12 +1259,15 @@ func (m *ServerMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ServerMutation) Fields() []string {
-	fields := make([]string, 0, 4)
+	fields := make([]string, 0, 5)
 	if m.create_time != nil {
 		fields = append(fields, server.FieldCreateTime)
 	}
 	if m.update_time != nil {
 		fields = append(fields, server.FieldUpdateTime)
+	}
+	if m.server_id != nil {
+		fields = append(fields, server.FieldServerID)
 	}
 	if m.owner_id != nil {
 		fields = append(fields, server.FieldOwnerID)
@@ -452,6 +1287,8 @@ func (m *ServerMutation) Field(name string) (ent.Value, bool) {
 		return m.CreateTime()
 	case server.FieldUpdateTime:
 		return m.UpdateTime()
+	case server.FieldServerID:
+		return m.ServerID()
 	case server.FieldOwnerID:
 		return m.OwnerID()
 	case server.FieldEnabled:
@@ -469,6 +1306,8 @@ func (m *ServerMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldCreateTime(ctx)
 	case server.FieldUpdateTime:
 		return m.OldUpdateTime(ctx)
+	case server.FieldServerID:
+		return m.OldServerID(ctx)
 	case server.FieldOwnerID:
 		return m.OldOwnerID(ctx)
 	case server.FieldEnabled:
@@ -495,6 +1334,13 @@ func (m *ServerMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetUpdateTime(v)
+		return nil
+	case server.FieldServerID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetServerID(v)
 		return nil
 	case server.FieldOwnerID:
 		v, ok := value.(string)
@@ -565,6 +1411,9 @@ func (m *ServerMutation) ResetField(name string) error {
 	case server.FieldUpdateTime:
 		m.ResetUpdateTime()
 		return nil
+	case server.FieldServerID:
+		m.ResetServerID()
+		return nil
 	case server.FieldOwnerID:
 		m.ResetOwnerID()
 		return nil
@@ -577,12 +1426,18 @@ func (m *ServerMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ServerMutation) AddedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 4)
 	if m.configuration != nil {
 		edges = append(edges, server.EdgeConfiguration)
 	}
+	if m.spammer != nil {
+		edges = append(edges, server.EdgeSpammer)
+	}
 	if m.word_blacklist != nil {
 		edges = append(edges, server.EdgeWordBlacklist)
+	}
+	if m.cooldown != nil {
+		edges = append(edges, server.EdgeCooldown)
 	}
 	return edges
 }
@@ -595,9 +1450,19 @@ func (m *ServerMutation) AddedIDs(name string) []ent.Value {
 		if id := m.configuration; id != nil {
 			return []ent.Value{*id}
 		}
+	case server.EdgeSpammer:
+		if id := m.spammer; id != nil {
+			return []ent.Value{*id}
+		}
 	case server.EdgeWordBlacklist:
 		ids := make([]ent.Value, 0, len(m.word_blacklist))
 		for id := range m.word_blacklist {
+			ids = append(ids, id)
+		}
+		return ids
+	case server.EdgeCooldown:
+		ids := make([]ent.Value, 0, len(m.cooldown))
+		for id := range m.cooldown {
 			ids = append(ids, id)
 		}
 		return ids
@@ -607,9 +1472,12 @@ func (m *ServerMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ServerMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 4)
 	if m.removedword_blacklist != nil {
 		edges = append(edges, server.EdgeWordBlacklist)
+	}
+	if m.removedcooldown != nil {
+		edges = append(edges, server.EdgeCooldown)
 	}
 	return edges
 }
@@ -624,18 +1492,30 @@ func (m *ServerMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case server.EdgeCooldown:
+		ids := make([]ent.Value, 0, len(m.removedcooldown))
+		for id := range m.removedcooldown {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ServerMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 4)
 	if m.clearedconfiguration {
 		edges = append(edges, server.EdgeConfiguration)
 	}
+	if m.clearedspammer {
+		edges = append(edges, server.EdgeSpammer)
+	}
 	if m.clearedword_blacklist {
 		edges = append(edges, server.EdgeWordBlacklist)
+	}
+	if m.clearedcooldown {
+		edges = append(edges, server.EdgeCooldown)
 	}
 	return edges
 }
@@ -646,8 +1526,12 @@ func (m *ServerMutation) EdgeCleared(name string) bool {
 	switch name {
 	case server.EdgeConfiguration:
 		return m.clearedconfiguration
+	case server.EdgeSpammer:
+		return m.clearedspammer
 	case server.EdgeWordBlacklist:
 		return m.clearedword_blacklist
+	case server.EdgeCooldown:
+		return m.clearedcooldown
 	}
 	return false
 }
@@ -658,6 +1542,9 @@ func (m *ServerMutation) ClearEdge(name string) error {
 	switch name {
 	case server.EdgeConfiguration:
 		m.ClearConfiguration()
+		return nil
+	case server.EdgeSpammer:
+		m.ClearSpammer()
 		return nil
 	}
 	return fmt.Errorf("unknown Server unique edge %s", name)
@@ -670,8 +1557,14 @@ func (m *ServerMutation) ResetEdge(name string) error {
 	case server.EdgeConfiguration:
 		m.ResetConfiguration()
 		return nil
+	case server.EdgeSpammer:
+		m.ResetSpammer()
+		return nil
 	case server.EdgeWordBlacklist:
 		m.ResetWordBlacklist()
+		return nil
+	case server.EdgeCooldown:
+		m.ResetCooldown()
 		return nil
 	}
 	return fmt.Errorf("unknown Server edge %s", name)
@@ -696,21 +1589,20 @@ type ServerConfigMutation struct {
 	alerts                  *bool
 	flag_links              *bool
 	log_channel             *string
+	given_role              *string
 	excluded_channels       *[]string
 	appendexcluded_channels []string
 	excluded_roles          *[]string
 	appendexcluded_roles    []string
 	excluded_users          *[]string
 	appendexcluded_users    []string
-	given_role              *string
 	ratelimit_message       *int
 	addratelimit_message    *int
 	ratelimit_time          *serverconfig.RatelimitTime
 	timeout_time            *serverconfig.TimeoutTime
 	ban_delete_message_time *serverconfig.BanDeleteMessageTime
 	clearedFields           map[string]struct{}
-	server                  map[string]struct{}
-	removedserver           map[string]struct{}
+	server                  *int
 	clearedserver           bool
 	done                    bool
 	oldValue                func(context.Context) (*ServerConfig, error)
@@ -1283,6 +2175,42 @@ func (m *ServerConfigMutation) ResetLogChannel() {
 	m.log_channel = nil
 }
 
+// SetGivenRole sets the "given_role" field.
+func (m *ServerConfigMutation) SetGivenRole(s string) {
+	m.given_role = &s
+}
+
+// GivenRole returns the value of the "given_role" field in the mutation.
+func (m *ServerConfigMutation) GivenRole() (r string, exists bool) {
+	v := m.given_role
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGivenRole returns the old "given_role" field's value of the ServerConfig entity.
+// If the ServerConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ServerConfigMutation) OldGivenRole(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGivenRole is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGivenRole requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGivenRole: %w", err)
+	}
+	return oldValue.GivenRole, nil
+}
+
+// ResetGivenRole resets all changes to the "given_role" field.
+func (m *ServerConfigMutation) ResetGivenRole() {
+	m.given_role = nil
+}
+
 // SetExcludedChannels sets the "excluded_channels" field.
 func (m *ServerConfigMutation) SetExcludedChannels(s []string) {
 	m.excluded_channels = &s
@@ -1434,42 +2362,6 @@ func (m *ServerConfigMutation) AppendedExcludedUsers() ([]string, bool) {
 func (m *ServerConfigMutation) ResetExcludedUsers() {
 	m.excluded_users = nil
 	m.appendexcluded_users = nil
-}
-
-// SetGivenRole sets the "given_role" field.
-func (m *ServerConfigMutation) SetGivenRole(s string) {
-	m.given_role = &s
-}
-
-// GivenRole returns the value of the "given_role" field in the mutation.
-func (m *ServerConfigMutation) GivenRole() (r string, exists bool) {
-	v := m.given_role
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldGivenRole returns the old "given_role" field's value of the ServerConfig entity.
-// If the ServerConfig object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ServerConfigMutation) OldGivenRole(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldGivenRole is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldGivenRole requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldGivenRole: %w", err)
-	}
-	return oldValue.GivenRole, nil
-}
-
-// ResetGivenRole resets all changes to the "given_role" field.
-func (m *ServerConfigMutation) ResetGivenRole() {
-	m.given_role = nil
 }
 
 // SetRatelimitMessage sets the "ratelimit_message" field.
@@ -1636,14 +2528,9 @@ func (m *ServerConfigMutation) ResetBanDeleteMessageTime() {
 	m.ban_delete_message_time = nil
 }
 
-// AddServerIDs adds the "server" edge to the Server entity by ids.
-func (m *ServerConfigMutation) AddServerIDs(ids ...string) {
-	if m.server == nil {
-		m.server = make(map[string]struct{})
-	}
-	for i := range ids {
-		m.server[ids[i]] = struct{}{}
-	}
+// SetServerID sets the "server" edge to the Server entity by id.
+func (m *ServerConfigMutation) SetServerID(id int) {
+	m.server = &id
 }
 
 // ClearServer clears the "server" edge to the Server entity.
@@ -1656,29 +2543,20 @@ func (m *ServerConfigMutation) ServerCleared() bool {
 	return m.clearedserver
 }
 
-// RemoveServerIDs removes the "server" edge to the Server entity by IDs.
-func (m *ServerConfigMutation) RemoveServerIDs(ids ...string) {
-	if m.removedserver == nil {
-		m.removedserver = make(map[string]struct{})
-	}
-	for i := range ids {
-		delete(m.server, ids[i])
-		m.removedserver[ids[i]] = struct{}{}
-	}
-}
-
-// RemovedServer returns the removed IDs of the "server" edge to the Server entity.
-func (m *ServerConfigMutation) RemovedServerIDs() (ids []string) {
-	for id := range m.removedserver {
-		ids = append(ids, id)
+// ServerID returns the "server" edge ID in the mutation.
+func (m *ServerConfigMutation) ServerID() (id int, exists bool) {
+	if m.server != nil {
+		return *m.server, true
 	}
 	return
 }
 
 // ServerIDs returns the "server" edge IDs in the mutation.
-func (m *ServerConfigMutation) ServerIDs() (ids []string) {
-	for id := range m.server {
-		ids = append(ids, id)
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ServerID instead. It exists only for internal usage by the builders.
+func (m *ServerConfigMutation) ServerIDs() (ids []int) {
+	if id := m.server; id != nil {
+		ids = append(ids, *id)
 	}
 	return
 }
@@ -1687,7 +2565,6 @@ func (m *ServerConfigMutation) ServerIDs() (ids []string) {
 func (m *ServerConfigMutation) ResetServer() {
 	m.server = nil
 	m.clearedserver = false
-	m.removedserver = nil
 }
 
 // Where appends a list predicates to the ServerConfigMutation builder.
@@ -1764,6 +2641,9 @@ func (m *ServerConfigMutation) Fields() []string {
 	if m.log_channel != nil {
 		fields = append(fields, serverconfig.FieldLogChannel)
 	}
+	if m.given_role != nil {
+		fields = append(fields, serverconfig.FieldGivenRole)
+	}
 	if m.excluded_channels != nil {
 		fields = append(fields, serverconfig.FieldExcludedChannels)
 	}
@@ -1772,9 +2652,6 @@ func (m *ServerConfigMutation) Fields() []string {
 	}
 	if m.excluded_users != nil {
 		fields = append(fields, serverconfig.FieldExcludedUsers)
-	}
-	if m.given_role != nil {
-		fields = append(fields, serverconfig.FieldGivenRole)
 	}
 	if m.ratelimit_message != nil {
 		fields = append(fields, serverconfig.FieldRatelimitMessage)
@@ -1822,14 +2699,14 @@ func (m *ServerConfigMutation) Field(name string) (ent.Value, bool) {
 		return m.FlagLinks()
 	case serverconfig.FieldLogChannel:
 		return m.LogChannel()
+	case serverconfig.FieldGivenRole:
+		return m.GivenRole()
 	case serverconfig.FieldExcludedChannels:
 		return m.ExcludedChannels()
 	case serverconfig.FieldExcludedRoles:
 		return m.ExcludedRoles()
 	case serverconfig.FieldExcludedUsers:
 		return m.ExcludedUsers()
-	case serverconfig.FieldGivenRole:
-		return m.GivenRole()
 	case serverconfig.FieldRatelimitMessage:
 		return m.RatelimitMessage()
 	case serverconfig.FieldRatelimitTime:
@@ -1873,14 +2750,14 @@ func (m *ServerConfigMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldFlagLinks(ctx)
 	case serverconfig.FieldLogChannel:
 		return m.OldLogChannel(ctx)
+	case serverconfig.FieldGivenRole:
+		return m.OldGivenRole(ctx)
 	case serverconfig.FieldExcludedChannels:
 		return m.OldExcludedChannels(ctx)
 	case serverconfig.FieldExcludedRoles:
 		return m.OldExcludedRoles(ctx)
 	case serverconfig.FieldExcludedUsers:
 		return m.OldExcludedUsers(ctx)
-	case serverconfig.FieldGivenRole:
-		return m.OldGivenRole(ctx)
 	case serverconfig.FieldRatelimitMessage:
 		return m.OldRatelimitMessage(ctx)
 	case serverconfig.FieldRatelimitTime:
@@ -1989,6 +2866,13 @@ func (m *ServerConfigMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetLogChannel(v)
 		return nil
+	case serverconfig.FieldGivenRole:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGivenRole(v)
+		return nil
 	case serverconfig.FieldExcludedChannels:
 		v, ok := value.([]string)
 		if !ok {
@@ -2009,13 +2893,6 @@ func (m *ServerConfigMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetExcludedUsers(v)
-		return nil
-	case serverconfig.FieldGivenRole:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetGivenRole(v)
 		return nil
 	case serverconfig.FieldRatelimitMessage:
 		v, ok := value.(int)
@@ -2148,6 +3025,9 @@ func (m *ServerConfigMutation) ResetField(name string) error {
 	case serverconfig.FieldLogChannel:
 		m.ResetLogChannel()
 		return nil
+	case serverconfig.FieldGivenRole:
+		m.ResetGivenRole()
+		return nil
 	case serverconfig.FieldExcludedChannels:
 		m.ResetExcludedChannels()
 		return nil
@@ -2156,9 +3036,6 @@ func (m *ServerConfigMutation) ResetField(name string) error {
 		return nil
 	case serverconfig.FieldExcludedUsers:
 		m.ResetExcludedUsers()
-		return nil
-	case serverconfig.FieldGivenRole:
-		m.ResetGivenRole()
 		return nil
 	case serverconfig.FieldRatelimitMessage:
 		m.ResetRatelimitMessage()
@@ -2190,11 +3067,9 @@ func (m *ServerConfigMutation) AddedEdges() []string {
 func (m *ServerConfigMutation) AddedIDs(name string) []ent.Value {
 	switch name {
 	case serverconfig.EdgeServer:
-		ids := make([]ent.Value, 0, len(m.server))
-		for id := range m.server {
-			ids = append(ids, id)
+		if id := m.server; id != nil {
+			return []ent.Value{*id}
 		}
-		return ids
 	}
 	return nil
 }
@@ -2202,23 +3077,12 @@ func (m *ServerConfigMutation) AddedIDs(name string) []ent.Value {
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ServerConfigMutation) RemovedEdges() []string {
 	edges := make([]string, 0, 1)
-	if m.removedserver != nil {
-		edges = append(edges, serverconfig.EdgeServer)
-	}
 	return edges
 }
 
 // RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
 // the given name in this mutation.
 func (m *ServerConfigMutation) RemovedIDs(name string) []ent.Value {
-	switch name {
-	case serverconfig.EdgeServer:
-		ids := make([]ent.Value, 0, len(m.removedserver))
-		for id := range m.removedserver {
-			ids = append(ids, id)
-		}
-		return ids
-	}
 	return nil
 }
 
@@ -2245,6 +3109,9 @@ func (m *ServerConfigMutation) EdgeCleared(name string) bool {
 // if that edge is not defined in the schema.
 func (m *ServerConfigMutation) ClearEdge(name string) error {
 	switch name {
+	case serverconfig.EdgeServer:
+		m.ClearServer()
+		return nil
 	}
 	return fmt.Errorf("unknown ServerConfig unique edge %s", name)
 }
@@ -2260,6 +3127,654 @@ func (m *ServerConfigMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown ServerConfig edge %s", name)
 }
 
+// SpammerMutation represents an operation that mutates the Spammer nodes in the graph.
+type SpammerMutation struct {
+	config
+	op                  Op
+	typ                 string
+	id                  *int
+	create_time         *time.Time
+	update_time         *time.Time
+	user_id             *string
+	removed_roles       *[]string
+	appendremoved_roles []string
+	last_flagged        *time.Time
+	clearedFields       map[string]struct{}
+	server              *int
+	clearedserver       bool
+	done                bool
+	oldValue            func(context.Context) (*Spammer, error)
+	predicates          []predicate.Spammer
+}
+
+var _ ent.Mutation = (*SpammerMutation)(nil)
+
+// spammerOption allows management of the mutation configuration using functional options.
+type spammerOption func(*SpammerMutation)
+
+// newSpammerMutation creates new mutation for the Spammer entity.
+func newSpammerMutation(c config, op Op, opts ...spammerOption) *SpammerMutation {
+	m := &SpammerMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSpammer,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSpammerID sets the ID field of the mutation.
+func withSpammerID(id int) spammerOption {
+	return func(m *SpammerMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Spammer
+		)
+		m.oldValue = func(ctx context.Context) (*Spammer, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Spammer.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSpammer sets the old Spammer of the mutation.
+func withSpammer(node *Spammer) spammerOption {
+	return func(m *SpammerMutation) {
+		m.oldValue = func(context.Context) (*Spammer, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SpammerMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SpammerMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SpammerMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SpammerMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Spammer.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreateTime sets the "create_time" field.
+func (m *SpammerMutation) SetCreateTime(t time.Time) {
+	m.create_time = &t
+}
+
+// CreateTime returns the value of the "create_time" field in the mutation.
+func (m *SpammerMutation) CreateTime() (r time.Time, exists bool) {
+	v := m.create_time
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreateTime returns the old "create_time" field's value of the Spammer entity.
+// If the Spammer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SpammerMutation) OldCreateTime(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreateTime is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreateTime requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreateTime: %w", err)
+	}
+	return oldValue.CreateTime, nil
+}
+
+// ResetCreateTime resets all changes to the "create_time" field.
+func (m *SpammerMutation) ResetCreateTime() {
+	m.create_time = nil
+}
+
+// SetUpdateTime sets the "update_time" field.
+func (m *SpammerMutation) SetUpdateTime(t time.Time) {
+	m.update_time = &t
+}
+
+// UpdateTime returns the value of the "update_time" field in the mutation.
+func (m *SpammerMutation) UpdateTime() (r time.Time, exists bool) {
+	v := m.update_time
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdateTime returns the old "update_time" field's value of the Spammer entity.
+// If the Spammer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SpammerMutation) OldUpdateTime(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdateTime is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdateTime requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdateTime: %w", err)
+	}
+	return oldValue.UpdateTime, nil
+}
+
+// ResetUpdateTime resets all changes to the "update_time" field.
+func (m *SpammerMutation) ResetUpdateTime() {
+	m.update_time = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *SpammerMutation) SetUserID(s string) {
+	m.user_id = &s
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *SpammerMutation) UserID() (r string, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the Spammer entity.
+// If the Spammer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SpammerMutation) OldUserID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *SpammerMutation) ResetUserID() {
+	m.user_id = nil
+}
+
+// SetRemovedRoles sets the "removed_roles" field.
+func (m *SpammerMutation) SetRemovedRoles(s []string) {
+	m.removed_roles = &s
+	m.appendremoved_roles = nil
+}
+
+// RemovedRoles returns the value of the "removed_roles" field in the mutation.
+func (m *SpammerMutation) RemovedRoles() (r []string, exists bool) {
+	v := m.removed_roles
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRemovedRoles returns the old "removed_roles" field's value of the Spammer entity.
+// If the Spammer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SpammerMutation) OldRemovedRoles(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRemovedRoles is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRemovedRoles requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRemovedRoles: %w", err)
+	}
+	return oldValue.RemovedRoles, nil
+}
+
+// AppendRemovedRoles adds s to the "removed_roles" field.
+func (m *SpammerMutation) AppendRemovedRoles(s []string) {
+	m.appendremoved_roles = append(m.appendremoved_roles, s...)
+}
+
+// AppendedRemovedRoles returns the list of values that were appended to the "removed_roles" field in this mutation.
+func (m *SpammerMutation) AppendedRemovedRoles() ([]string, bool) {
+	if len(m.appendremoved_roles) == 0 {
+		return nil, false
+	}
+	return m.appendremoved_roles, true
+}
+
+// ClearRemovedRoles clears the value of the "removed_roles" field.
+func (m *SpammerMutation) ClearRemovedRoles() {
+	m.removed_roles = nil
+	m.appendremoved_roles = nil
+	m.clearedFields[spammer.FieldRemovedRoles] = struct{}{}
+}
+
+// RemovedRolesCleared returns if the "removed_roles" field was cleared in this mutation.
+func (m *SpammerMutation) RemovedRolesCleared() bool {
+	_, ok := m.clearedFields[spammer.FieldRemovedRoles]
+	return ok
+}
+
+// ResetRemovedRoles resets all changes to the "removed_roles" field.
+func (m *SpammerMutation) ResetRemovedRoles() {
+	m.removed_roles = nil
+	m.appendremoved_roles = nil
+	delete(m.clearedFields, spammer.FieldRemovedRoles)
+}
+
+// SetLastFlagged sets the "last_flagged" field.
+func (m *SpammerMutation) SetLastFlagged(t time.Time) {
+	m.last_flagged = &t
+}
+
+// LastFlagged returns the value of the "last_flagged" field in the mutation.
+func (m *SpammerMutation) LastFlagged() (r time.Time, exists bool) {
+	v := m.last_flagged
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastFlagged returns the old "last_flagged" field's value of the Spammer entity.
+// If the Spammer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SpammerMutation) OldLastFlagged(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastFlagged is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastFlagged requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastFlagged: %w", err)
+	}
+	return oldValue.LastFlagged, nil
+}
+
+// ResetLastFlagged resets all changes to the "last_flagged" field.
+func (m *SpammerMutation) ResetLastFlagged() {
+	m.last_flagged = nil
+}
+
+// SetServerID sets the "server" edge to the Server entity by id.
+func (m *SpammerMutation) SetServerID(id int) {
+	m.server = &id
+}
+
+// ClearServer clears the "server" edge to the Server entity.
+func (m *SpammerMutation) ClearServer() {
+	m.clearedserver = true
+}
+
+// ServerCleared reports if the "server" edge to the Server entity was cleared.
+func (m *SpammerMutation) ServerCleared() bool {
+	return m.clearedserver
+}
+
+// ServerID returns the "server" edge ID in the mutation.
+func (m *SpammerMutation) ServerID() (id int, exists bool) {
+	if m.server != nil {
+		return *m.server, true
+	}
+	return
+}
+
+// ServerIDs returns the "server" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ServerID instead. It exists only for internal usage by the builders.
+func (m *SpammerMutation) ServerIDs() (ids []int) {
+	if id := m.server; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetServer resets all changes to the "server" edge.
+func (m *SpammerMutation) ResetServer() {
+	m.server = nil
+	m.clearedserver = false
+}
+
+// Where appends a list predicates to the SpammerMutation builder.
+func (m *SpammerMutation) Where(ps ...predicate.Spammer) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SpammerMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SpammerMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Spammer, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SpammerMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SpammerMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Spammer).
+func (m *SpammerMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SpammerMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.create_time != nil {
+		fields = append(fields, spammer.FieldCreateTime)
+	}
+	if m.update_time != nil {
+		fields = append(fields, spammer.FieldUpdateTime)
+	}
+	if m.user_id != nil {
+		fields = append(fields, spammer.FieldUserID)
+	}
+	if m.removed_roles != nil {
+		fields = append(fields, spammer.FieldRemovedRoles)
+	}
+	if m.last_flagged != nil {
+		fields = append(fields, spammer.FieldLastFlagged)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SpammerMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case spammer.FieldCreateTime:
+		return m.CreateTime()
+	case spammer.FieldUpdateTime:
+		return m.UpdateTime()
+	case spammer.FieldUserID:
+		return m.UserID()
+	case spammer.FieldRemovedRoles:
+		return m.RemovedRoles()
+	case spammer.FieldLastFlagged:
+		return m.LastFlagged()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SpammerMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case spammer.FieldCreateTime:
+		return m.OldCreateTime(ctx)
+	case spammer.FieldUpdateTime:
+		return m.OldUpdateTime(ctx)
+	case spammer.FieldUserID:
+		return m.OldUserID(ctx)
+	case spammer.FieldRemovedRoles:
+		return m.OldRemovedRoles(ctx)
+	case spammer.FieldLastFlagged:
+		return m.OldLastFlagged(ctx)
+	}
+	return nil, fmt.Errorf("unknown Spammer field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SpammerMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case spammer.FieldCreateTime:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreateTime(v)
+		return nil
+	case spammer.FieldUpdateTime:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdateTime(v)
+		return nil
+	case spammer.FieldUserID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case spammer.FieldRemovedRoles:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRemovedRoles(v)
+		return nil
+	case spammer.FieldLastFlagged:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastFlagged(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Spammer field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SpammerMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SpammerMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SpammerMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Spammer numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SpammerMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(spammer.FieldRemovedRoles) {
+		fields = append(fields, spammer.FieldRemovedRoles)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SpammerMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SpammerMutation) ClearField(name string) error {
+	switch name {
+	case spammer.FieldRemovedRoles:
+		m.ClearRemovedRoles()
+		return nil
+	}
+	return fmt.Errorf("unknown Spammer nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SpammerMutation) ResetField(name string) error {
+	switch name {
+	case spammer.FieldCreateTime:
+		m.ResetCreateTime()
+		return nil
+	case spammer.FieldUpdateTime:
+		m.ResetUpdateTime()
+		return nil
+	case spammer.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case spammer.FieldRemovedRoles:
+		m.ResetRemovedRoles()
+		return nil
+	case spammer.FieldLastFlagged:
+		m.ResetLastFlagged()
+		return nil
+	}
+	return fmt.Errorf("unknown Spammer field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SpammerMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.server != nil {
+		edges = append(edges, spammer.EdgeServer)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SpammerMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case spammer.EdgeServer:
+		if id := m.server; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SpammerMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SpammerMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SpammerMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedserver {
+		edges = append(edges, spammer.EdgeServer)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SpammerMutation) EdgeCleared(name string) bool {
+	switch name {
+	case spammer.EdgeServer:
+		return m.clearedserver
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SpammerMutation) ClearEdge(name string) error {
+	switch name {
+	case spammer.EdgeServer:
+		m.ClearServer()
+		return nil
+	}
+	return fmt.Errorf("unknown Spammer unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SpammerMutation) ResetEdge(name string) error {
+	switch name {
+	case spammer.EdgeServer:
+		m.ResetServer()
+		return nil
+	}
+	return fmt.Errorf("unknown Spammer edge %s", name)
+}
+
 // WordBlacklistMutation represents an operation that mutates the WordBlacklist nodes in the graph.
 type WordBlacklistMutation struct {
 	config
@@ -2270,8 +3785,8 @@ type WordBlacklistMutation struct {
 	update_time   *time.Time
 	word          *string
 	clearedFields map[string]struct{}
-	server        map[string]struct{}
-	removedserver map[string]struct{}
+	server        map[int]struct{}
+	removedserver map[int]struct{}
 	clearedserver bool
 	done          bool
 	oldValue      func(context.Context) (*WordBlacklist, error)
@@ -2485,9 +4000,9 @@ func (m *WordBlacklistMutation) ResetWord() {
 }
 
 // AddServerIDs adds the "server" edge to the Server entity by ids.
-func (m *WordBlacklistMutation) AddServerIDs(ids ...string) {
+func (m *WordBlacklistMutation) AddServerIDs(ids ...int) {
 	if m.server == nil {
-		m.server = make(map[string]struct{})
+		m.server = make(map[int]struct{})
 	}
 	for i := range ids {
 		m.server[ids[i]] = struct{}{}
@@ -2505,9 +4020,9 @@ func (m *WordBlacklistMutation) ServerCleared() bool {
 }
 
 // RemoveServerIDs removes the "server" edge to the Server entity by IDs.
-func (m *WordBlacklistMutation) RemoveServerIDs(ids ...string) {
+func (m *WordBlacklistMutation) RemoveServerIDs(ids ...int) {
 	if m.removedserver == nil {
-		m.removedserver = make(map[string]struct{})
+		m.removedserver = make(map[int]struct{})
 	}
 	for i := range ids {
 		delete(m.server, ids[i])
@@ -2516,7 +4031,7 @@ func (m *WordBlacklistMutation) RemoveServerIDs(ids ...string) {
 }
 
 // RemovedServer returns the removed IDs of the "server" edge to the Server entity.
-func (m *WordBlacklistMutation) RemovedServerIDs() (ids []string) {
+func (m *WordBlacklistMutation) RemovedServerIDs() (ids []int) {
 	for id := range m.removedserver {
 		ids = append(ids, id)
 	}
@@ -2524,7 +4039,7 @@ func (m *WordBlacklistMutation) RemovedServerIDs() (ids []string) {
 }
 
 // ServerIDs returns the "server" edge IDs in the mutation.
-func (m *WordBlacklistMutation) ServerIDs() (ids []string) {
+func (m *WordBlacklistMutation) ServerIDs() (ids []int) {
 	for id := range m.server {
 		ids = append(ids, id)
 	}

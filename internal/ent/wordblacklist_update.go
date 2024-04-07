@@ -51,14 +51,14 @@ func (wbu *WordBlacklistUpdate) SetNillableWord(s *string) *WordBlacklistUpdate 
 }
 
 // AddServerIDs adds the "server" edge to the Server entity by IDs.
-func (wbu *WordBlacklistUpdate) AddServerIDs(ids ...string) *WordBlacklistUpdate {
+func (wbu *WordBlacklistUpdate) AddServerIDs(ids ...int) *WordBlacklistUpdate {
 	wbu.mutation.AddServerIDs(ids...)
 	return wbu
 }
 
 // AddServer adds the "server" edges to the Server entity.
 func (wbu *WordBlacklistUpdate) AddServer(s ...*Server) *WordBlacklistUpdate {
-	ids := make([]string, len(s))
+	ids := make([]int, len(s))
 	for i := range s {
 		ids[i] = s[i].ID
 	}
@@ -77,14 +77,14 @@ func (wbu *WordBlacklistUpdate) ClearServer() *WordBlacklistUpdate {
 }
 
 // RemoveServerIDs removes the "server" edge to Server entities by IDs.
-func (wbu *WordBlacklistUpdate) RemoveServerIDs(ids ...string) *WordBlacklistUpdate {
+func (wbu *WordBlacklistUpdate) RemoveServerIDs(ids ...int) *WordBlacklistUpdate {
 	wbu.mutation.RemoveServerIDs(ids...)
 	return wbu
 }
 
 // RemoveServer removes "server" edges to Server entities.
 func (wbu *WordBlacklistUpdate) RemoveServer(s ...*Server) *WordBlacklistUpdate {
-	ids := make([]string, len(s))
+	ids := make([]int, len(s))
 	for i := range s {
 		ids[i] = s[i].ID
 	}
@@ -156,7 +156,7 @@ func (wbu *WordBlacklistUpdate) sqlSave(ctx context.Context) (n int, err error) 
 			Columns: wordblacklist.ServerPrimaryKey,
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeInt),
 			},
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
@@ -169,7 +169,7 @@ func (wbu *WordBlacklistUpdate) sqlSave(ctx context.Context) (n int, err error) 
 			Columns: wordblacklist.ServerPrimaryKey,
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {
@@ -185,7 +185,7 @@ func (wbu *WordBlacklistUpdate) sqlSave(ctx context.Context) (n int, err error) 
 			Columns: wordblacklist.ServerPrimaryKey,
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {
@@ -236,14 +236,14 @@ func (wbuo *WordBlacklistUpdateOne) SetNillableWord(s *string) *WordBlacklistUpd
 }
 
 // AddServerIDs adds the "server" edge to the Server entity by IDs.
-func (wbuo *WordBlacklistUpdateOne) AddServerIDs(ids ...string) *WordBlacklistUpdateOne {
+func (wbuo *WordBlacklistUpdateOne) AddServerIDs(ids ...int) *WordBlacklistUpdateOne {
 	wbuo.mutation.AddServerIDs(ids...)
 	return wbuo
 }
 
 // AddServer adds the "server" edges to the Server entity.
 func (wbuo *WordBlacklistUpdateOne) AddServer(s ...*Server) *WordBlacklistUpdateOne {
-	ids := make([]string, len(s))
+	ids := make([]int, len(s))
 	for i := range s {
 		ids[i] = s[i].ID
 	}
@@ -262,14 +262,14 @@ func (wbuo *WordBlacklistUpdateOne) ClearServer() *WordBlacklistUpdateOne {
 }
 
 // RemoveServerIDs removes the "server" edge to Server entities by IDs.
-func (wbuo *WordBlacklistUpdateOne) RemoveServerIDs(ids ...string) *WordBlacklistUpdateOne {
+func (wbuo *WordBlacklistUpdateOne) RemoveServerIDs(ids ...int) *WordBlacklistUpdateOne {
 	wbuo.mutation.RemoveServerIDs(ids...)
 	return wbuo
 }
 
 // RemoveServer removes "server" edges to Server entities.
 func (wbuo *WordBlacklistUpdateOne) RemoveServer(s ...*Server) *WordBlacklistUpdateOne {
-	ids := make([]string, len(s))
+	ids := make([]int, len(s))
 	for i := range s {
 		ids[i] = s[i].ID
 	}
@@ -371,7 +371,7 @@ func (wbuo *WordBlacklistUpdateOne) sqlSave(ctx context.Context) (_node *WordBla
 			Columns: wordblacklist.ServerPrimaryKey,
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeInt),
 			},
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
@@ -384,7 +384,7 @@ func (wbuo *WordBlacklistUpdateOne) sqlSave(ctx context.Context) (_node *WordBla
 			Columns: wordblacklist.ServerPrimaryKey,
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {
@@ -400,7 +400,7 @@ func (wbuo *WordBlacklistUpdateOne) sqlSave(ctx context.Context) (_node *WordBla
 			Columns: wordblacklist.ServerPrimaryKey,
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {

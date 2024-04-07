@@ -8,12 +8,13 @@ import (
 	"fmt"
 	"time"
 
-	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/FM1337/ASB/internal/ent/cooldown"
 	"github.com/FM1337/ASB/internal/ent/server"
 	"github.com/FM1337/ASB/internal/ent/serverconfig"
+	"github.com/FM1337/ASB/internal/ent/spammer"
 	"github.com/FM1337/ASB/internal/ent/wordblacklist"
 )
 
@@ -53,6 +54,12 @@ func (sc *ServerCreate) SetNillableUpdateTime(t *time.Time) *ServerCreate {
 	return sc
 }
 
+// SetServerID sets the "server_id" field.
+func (sc *ServerCreate) SetServerID(s string) *ServerCreate {
+	sc.mutation.SetServerID(s)
+	return sc
+}
+
 // SetOwnerID sets the "owner_id" field.
 func (sc *ServerCreate) SetOwnerID(s string) *ServerCreate {
 	sc.mutation.SetOwnerID(s)
@@ -73,12 +80,6 @@ func (sc *ServerCreate) SetNillableEnabled(b *bool) *ServerCreate {
 	return sc
 }
 
-// SetID sets the "id" field.
-func (sc *ServerCreate) SetID(s string) *ServerCreate {
-	sc.mutation.SetID(s)
-	return sc
-}
-
 // SetConfigurationID sets the "configuration" edge to the ServerConfig entity by ID.
 func (sc *ServerCreate) SetConfigurationID(id int) *ServerCreate {
 	sc.mutation.SetConfigurationID(id)
@@ -88,6 +89,25 @@ func (sc *ServerCreate) SetConfigurationID(id int) *ServerCreate {
 // SetConfiguration sets the "configuration" edge to the ServerConfig entity.
 func (sc *ServerCreate) SetConfiguration(s *ServerConfig) *ServerCreate {
 	return sc.SetConfigurationID(s.ID)
+}
+
+// SetSpammerID sets the "spammer" edge to the Spammer entity by ID.
+func (sc *ServerCreate) SetSpammerID(id int) *ServerCreate {
+	sc.mutation.SetSpammerID(id)
+	return sc
+}
+
+// SetNillableSpammerID sets the "spammer" edge to the Spammer entity by ID if the given value is not nil.
+func (sc *ServerCreate) SetNillableSpammerID(id *int) *ServerCreate {
+	if id != nil {
+		sc = sc.SetSpammerID(*id)
+	}
+	return sc
+}
+
+// SetSpammer sets the "spammer" edge to the Spammer entity.
+func (sc *ServerCreate) SetSpammer(s *Spammer) *ServerCreate {
+	return sc.SetSpammerID(s.ID)
 }
 
 // AddWordBlacklistIDs adds the "word_blacklist" edge to the WordBlacklist entity by IDs.
@@ -103,6 +123,21 @@ func (sc *ServerCreate) AddWordBlacklist(w ...*WordBlacklist) *ServerCreate {
 		ids[i] = w[i].ID
 	}
 	return sc.AddWordBlacklistIDs(ids...)
+}
+
+// AddCooldownIDs adds the "cooldown" edge to the Cooldown entity by IDs.
+func (sc *ServerCreate) AddCooldownIDs(ids ...int) *ServerCreate {
+	sc.mutation.AddCooldownIDs(ids...)
+	return sc
+}
+
+// AddCooldown adds the "cooldown" edges to the Cooldown entity.
+func (sc *ServerCreate) AddCooldown(c ...*Cooldown) *ServerCreate {
+	ids := make([]int, len(c))
+	for i := range c {
+		ids[i] = c[i].ID
+	}
+	return sc.AddCooldownIDs(ids...)
 }
 
 // Mutation returns the ServerMutation object of the builder.
@@ -162,6 +197,9 @@ func (sc *ServerCreate) check() error {
 	if _, ok := sc.mutation.UpdateTime(); !ok {
 		return &ValidationError{Name: "update_time", err: errors.New(`ent: missing required field "Server.update_time"`)}
 	}
+	if _, ok := sc.mutation.ServerID(); !ok {
+		return &ValidationError{Name: "server_id", err: errors.New(`ent: missing required field "Server.server_id"`)}
+	}
 	if _, ok := sc.mutation.OwnerID(); !ok {
 		return &ValidationError{Name: "owner_id", err: errors.New(`ent: missing required field "Server.owner_id"`)}
 	}
@@ -185,13 +223,8 @@ func (sc *ServerCreate) sqlSave(ctx context.Context) (*Server, error) {
 		}
 		return nil, err
 	}
-	if _spec.ID.Value != nil {
-		if id, ok := _spec.ID.Value.(string); ok {
-			_node.ID = id
-		} else {
-			return nil, fmt.Errorf("unexpected Server.ID type: %T", _spec.ID.Value)
-		}
-	}
+	id := _spec.ID.Value.(int64)
+	_node.ID = int(id)
 	sc.mutation.id = &_node.ID
 	sc.mutation.done = true
 	return _node, nil
@@ -200,13 +233,9 @@ func (sc *ServerCreate) sqlSave(ctx context.Context) (*Server, error) {
 func (sc *ServerCreate) createSpec() (*Server, *sqlgraph.CreateSpec) {
 	var (
 		_node = &Server{config: sc.config}
-		_spec = sqlgraph.NewCreateSpec(server.Table, sqlgraph.NewFieldSpec(server.FieldID, field.TypeString))
+		_spec = sqlgraph.NewCreateSpec(server.Table, sqlgraph.NewFieldSpec(server.FieldID, field.TypeInt))
 	)
 	_spec.OnConflict = sc.conflict
-	if id, ok := sc.mutation.ID(); ok {
-		_node.ID = id
-		_spec.ID.Value = id
-	}
 	if value, ok := sc.mutation.CreateTime(); ok {
 		_spec.SetField(server.FieldCreateTime, field.TypeTime, value)
 		_node.CreateTime = value
@@ -214,6 +243,10 @@ func (sc *ServerCreate) createSpec() (*Server, *sqlgraph.CreateSpec) {
 	if value, ok := sc.mutation.UpdateTime(); ok {
 		_spec.SetField(server.FieldUpdateTime, field.TypeTime, value)
 		_node.UpdateTime = value
+	}
+	if value, ok := sc.mutation.ServerID(); ok {
+		_spec.SetField(server.FieldServerID, field.TypeString, value)
+		_node.ServerID = value
 	}
 	if value, ok := sc.mutation.OwnerID(); ok {
 		_spec.SetField(server.FieldOwnerID, field.TypeString, value)
@@ -225,7 +258,7 @@ func (sc *ServerCreate) createSpec() (*Server, *sqlgraph.CreateSpec) {
 	}
 	if nodes := sc.mutation.ConfigurationIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2O,
+			Rel:     sqlgraph.O2O,
 			Inverse: false,
 			Table:   server.ConfigurationTable,
 			Columns: []string{server.ConfigurationColumn},
@@ -237,7 +270,22 @@ func (sc *ServerCreate) createSpec() (*Server, *sqlgraph.CreateSpec) {
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
-		_node.server_configuration = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := sc.mutation.SpammerIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   server.SpammerTable,
+			Columns: []string{server.SpammerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(spammer.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := sc.mutation.WordBlacklistIDs(); len(nodes) > 0 {
@@ -249,6 +297,22 @@ func (sc *ServerCreate) createSpec() (*Server, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(wordblacklist.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := sc.mutation.CooldownIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   server.CooldownTable,
+			Columns: []string{server.CooldownColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(cooldown.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {
@@ -320,6 +384,18 @@ func (u *ServerUpsert) UpdateUpdateTime() *ServerUpsert {
 	return u
 }
 
+// SetServerID sets the "server_id" field.
+func (u *ServerUpsert) SetServerID(v string) *ServerUpsert {
+	u.Set(server.FieldServerID, v)
+	return u
+}
+
+// UpdateServerID sets the "server_id" field to the value that was provided on create.
+func (u *ServerUpsert) UpdateServerID() *ServerUpsert {
+	u.SetExcluded(server.FieldServerID)
+	return u
+}
+
 // SetOwnerID sets the "owner_id" field.
 func (u *ServerUpsert) SetOwnerID(v string) *ServerUpsert {
 	u.Set(server.FieldOwnerID, v)
@@ -344,23 +420,17 @@ func (u *ServerUpsert) UpdateEnabled() *ServerUpsert {
 	return u
 }
 
-// UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
+// UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
 //	client.Server.Create().
 //		OnConflict(
 //			sql.ResolveWithNewValues(),
-//			sql.ResolveWith(func(u *sql.UpdateSet) {
-//				u.SetIgnore(server.FieldID)
-//			}),
 //		).
 //		Exec(ctx)
 func (u *ServerUpsertOne) UpdateNewValues() *ServerUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
-		if _, exists := u.create.mutation.ID(); exists {
-			s.SetIgnore(server.FieldID)
-		}
 		if _, exists := u.create.mutation.CreateTime(); exists {
 			s.SetIgnore(server.FieldCreateTime)
 		}
@@ -409,6 +479,20 @@ func (u *ServerUpsertOne) UpdateUpdateTime() *ServerUpsertOne {
 	})
 }
 
+// SetServerID sets the "server_id" field.
+func (u *ServerUpsertOne) SetServerID(v string) *ServerUpsertOne {
+	return u.Update(func(s *ServerUpsert) {
+		s.SetServerID(v)
+	})
+}
+
+// UpdateServerID sets the "server_id" field to the value that was provided on create.
+func (u *ServerUpsertOne) UpdateServerID() *ServerUpsertOne {
+	return u.Update(func(s *ServerUpsert) {
+		s.UpdateServerID()
+	})
+}
+
 // SetOwnerID sets the "owner_id" field.
 func (u *ServerUpsertOne) SetOwnerID(v string) *ServerUpsertOne {
 	return u.Update(func(s *ServerUpsert) {
@@ -453,12 +537,7 @@ func (u *ServerUpsertOne) ExecX(ctx context.Context) {
 }
 
 // Exec executes the UPSERT query and returns the inserted/updated ID.
-func (u *ServerUpsertOne) ID(ctx context.Context) (id string, err error) {
-	if u.create.driver.Dialect() == dialect.MySQL {
-		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
-		// fields from the database since MySQL does not support the RETURNING clause.
-		return id, errors.New("ent: ServerUpsertOne.ID is not supported by MySQL driver. Use ServerUpsertOne.Exec instead")
-	}
+func (u *ServerUpsertOne) ID(ctx context.Context) (id int, err error) {
 	node, err := u.create.Save(ctx)
 	if err != nil {
 		return id, err
@@ -467,7 +546,7 @@ func (u *ServerUpsertOne) ID(ctx context.Context) (id string, err error) {
 }
 
 // IDX is like ID, but panics if an error occurs.
-func (u *ServerUpsertOne) IDX(ctx context.Context) string {
+func (u *ServerUpsertOne) IDX(ctx context.Context) int {
 	id, err := u.ID(ctx)
 	if err != nil {
 		panic(err)
@@ -522,6 +601,10 @@ func (scb *ServerCreateBulk) Save(ctx context.Context) ([]*Server, error) {
 					return nil, err
 				}
 				mutation.id = &nodes[i].ID
+				if specs[i].ID.Value != nil {
+					id := specs[i].ID.Value.(int64)
+					nodes[i].ID = int(id)
+				}
 				mutation.done = true
 				return nodes[i], nil
 			})
@@ -608,18 +691,12 @@ type ServerUpsertBulk struct {
 //	client.Server.Create().
 //		OnConflict(
 //			sql.ResolveWithNewValues(),
-//			sql.ResolveWith(func(u *sql.UpdateSet) {
-//				u.SetIgnore(server.FieldID)
-//			}),
 //		).
 //		Exec(ctx)
 func (u *ServerUpsertBulk) UpdateNewValues() *ServerUpsertBulk {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
 		for _, b := range u.create.builders {
-			if _, exists := b.mutation.ID(); exists {
-				s.SetIgnore(server.FieldID)
-			}
 			if _, exists := b.mutation.CreateTime(); exists {
 				s.SetIgnore(server.FieldCreateTime)
 			}
@@ -666,6 +743,20 @@ func (u *ServerUpsertBulk) SetUpdateTime(v time.Time) *ServerUpsertBulk {
 func (u *ServerUpsertBulk) UpdateUpdateTime() *ServerUpsertBulk {
 	return u.Update(func(s *ServerUpsert) {
 		s.UpdateUpdateTime()
+	})
+}
+
+// SetServerID sets the "server_id" field.
+func (u *ServerUpsertBulk) SetServerID(v string) *ServerUpsertBulk {
+	return u.Update(func(s *ServerUpsert) {
+		s.SetServerID(v)
+	})
+}
+
+// UpdateServerID sets the "server_id" field to the value that was provided on create.
+func (u *ServerUpsertBulk) UpdateServerID() *ServerUpsertBulk {
+	return u.Update(func(s *ServerUpsert) {
+		s.UpdateServerID()
 	})
 }
 

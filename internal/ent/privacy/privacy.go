@@ -111,6 +111,30 @@ func DenyMutationOperationRule(op ent.Op) MutationRule {
 	return OnMutationOperation(rule, op)
 }
 
+// The CooldownQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type CooldownQueryRuleFunc func(context.Context, *ent.CooldownQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f CooldownQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CooldownQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.CooldownQuery", q)
+}
+
+// The CooldownMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type CooldownMutationRuleFunc func(context.Context, *ent.CooldownMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f CooldownMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.CooldownMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.CooldownMutation", m)
+}
+
 // The ServerQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type ServerQueryRuleFunc func(context.Context, *ent.ServerQuery) error
@@ -157,6 +181,30 @@ func (f ServerConfigMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mu
 		return f(ctx, m)
 	}
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.ServerConfigMutation", m)
+}
+
+// The SpammerQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type SpammerQueryRuleFunc func(context.Context, *ent.SpammerQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f SpammerQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SpammerQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.SpammerQuery", q)
+}
+
+// The SpammerMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type SpammerMutationRuleFunc func(context.Context, *ent.SpammerMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f SpammerMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.SpammerMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.SpammerMutation", m)
 }
 
 // The WordBlacklistQueryRuleFunc type is an adapter to allow the use of ordinary
@@ -218,9 +266,13 @@ var _ QueryMutationRule = FilterFunc(nil)
 
 func queryFilter(q ent.Query) (Filter, error) {
 	switch q := q.(type) {
+	case *ent.CooldownQuery:
+		return q.Filter(), nil
 	case *ent.ServerQuery:
 		return q.Filter(), nil
 	case *ent.ServerConfigQuery:
+		return q.Filter(), nil
+	case *ent.SpammerQuery:
 		return q.Filter(), nil
 	case *ent.WordBlacklistQuery:
 		return q.Filter(), nil
@@ -231,9 +283,13 @@ func queryFilter(q ent.Query) (Filter, error) {
 
 func mutationFilter(m ent.Mutation) (Filter, error) {
 	switch m := m.(type) {
+	case *ent.CooldownMutation:
+		return m.Filter(), nil
 	case *ent.ServerMutation:
 		return m.Filter(), nil
 	case *ent.ServerConfigMutation:
+		return m.Filter(), nil
+	case *ent.SpammerMutation:
 		return m.Filter(), nil
 	case *ent.WordBlacklistMutation:
 		return m.Filter(), nil

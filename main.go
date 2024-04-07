@@ -1,18 +1,15 @@
 package main
 
 import (
-	"context"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/FM1337/ASB/internal/bot"
-	"github.com/FM1337/ASB/internal/database"
 	"github.com/FM1337/ASB/internal/ent"
 	"github.com/FM1337/ASB/internal/models"
 	"github.com/apex/log"
 	"github.com/lrstanley/clix"
-	"github.com/redis/go-redis/v9"
 )
 
 var (
@@ -22,7 +19,7 @@ var (
 	logger log.Interface
 
 	db  *ent.Client
-	rdb *redis.Client
+	asb *bot.Bot
 )
 
 func init() {
@@ -30,33 +27,15 @@ func init() {
 	logger = cli.Logger
 
 	if !cli.Flags.Configured {
-		logger.Warn("Bot not configured")
-		os.Exit(1)
-	}
-
-	db = database.Open(logger, cli.Flags.DB)
-	ctx := ent.NewContext(log.NewContext(context.Background(), logger), db)
-	database.Migrate(ctx, logger)
-
-	rdb = redis.NewClient(&redis.Options{
-		Addr:     cli.Flags.Redis.Addr,
-		Password: cli.Flags.Redis.Password,
-		DB:       cli.Flags.Redis.DB,
-	})
-
-	// Ping to verify we connected successfully
-	_, err := rdb.Ping(context.Background()).Result()
-
-	if err != nil {
-		logger.WithError(err).Fatal("Failed to ping redis server")
+		logger.Fatal("Bot not configured")
 	}
 }
 
 func main() {
+	// Run the required setup tasks
+	setup()
 
-	b := bot.NewBot(logger, db, rdb, cli.Flags.Discord)
-
-	err := b.Start()
+	err := asb.Start()
 
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to start bot")
@@ -71,7 +50,7 @@ func main() {
 	case <-signals:
 		logger.Info("received SIGINT/SIGTERM/SIGQUIT, closing connections...")
 		// Shut down the bot followed by the databases
-		b.Stop()
+		asb.Stop()
 		db.Close()
 		logger.Info("done cleaning up; exiting")
 		os.Exit(0)

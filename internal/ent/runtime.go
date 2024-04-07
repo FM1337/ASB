@@ -6,8 +6,10 @@ import (
 	"time"
 
 	"github.com/FM1337/ASB/internal/database/schema"
+	"github.com/FM1337/ASB/internal/ent/cooldown"
 	"github.com/FM1337/ASB/internal/ent/server"
 	"github.com/FM1337/ASB/internal/ent/serverconfig"
+	"github.com/FM1337/ASB/internal/ent/spammer"
 	"github.com/FM1337/ASB/internal/ent/wordblacklist"
 )
 
@@ -15,6 +17,29 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	cooldownMixin := schema.Cooldown{}.Mixin()
+	cooldownMixinFields0 := cooldownMixin[0].Fields()
+	_ = cooldownMixinFields0
+	cooldownFields := schema.Cooldown{}.Fields()
+	_ = cooldownFields
+	// cooldownDescCreateTime is the schema descriptor for create_time field.
+	cooldownDescCreateTime := cooldownMixinFields0[0].Descriptor()
+	// cooldown.DefaultCreateTime holds the default value on creation for the create_time field.
+	cooldown.DefaultCreateTime = cooldownDescCreateTime.Default.(func() time.Time)
+	// cooldownDescUpdateTime is the schema descriptor for update_time field.
+	cooldownDescUpdateTime := cooldownMixinFields0[1].Descriptor()
+	// cooldown.DefaultUpdateTime holds the default value on creation for the update_time field.
+	cooldown.DefaultUpdateTime = cooldownDescUpdateTime.Default.(func() time.Time)
+	// cooldown.UpdateDefaultUpdateTime holds the default value on update for the update_time field.
+	cooldown.UpdateDefaultUpdateTime = cooldownDescUpdateTime.UpdateDefault.(func() time.Time)
+	// cooldownDescCount is the schema descriptor for count field.
+	cooldownDescCount := cooldownFields[2].Descriptor()
+	// cooldown.DefaultCount holds the default value on creation for the count field.
+	cooldown.DefaultCount = cooldownDescCount.Default.(int)
+	// cooldownDescResetsAt is the schema descriptor for resets_at field.
+	cooldownDescResetsAt := cooldownFields[3].Descriptor()
+	// cooldown.DefaultResetsAt holds the default value on creation for the resets_at field.
+	cooldown.DefaultResetsAt = cooldownDescResetsAt.Default.(func() time.Time)
 	serverMixin := schema.Server{}.Mixin()
 	serverMixinFields0 := serverMixin[0].Fields()
 	_ = serverMixinFields0
@@ -89,10 +114,49 @@ func init() {
 	serverconfigDescFlagLinks := serverconfigFields[9].Descriptor()
 	// serverconfig.DefaultFlagLinks holds the default value on creation for the flag_links field.
 	serverconfig.DefaultFlagLinks = serverconfigDescFlagLinks.Default.(bool)
+	// serverconfigDescLogChannel is the schema descriptor for log_channel field.
+	serverconfigDescLogChannel := serverconfigFields[10].Descriptor()
+	// serverconfig.DefaultLogChannel holds the default value on creation for the log_channel field.
+	serverconfig.DefaultLogChannel = serverconfigDescLogChannel.Default.(string)
+	// serverconfigDescGivenRole is the schema descriptor for given_role field.
+	serverconfigDescGivenRole := serverconfigFields[11].Descriptor()
+	// serverconfig.DefaultGivenRole holds the default value on creation for the given_role field.
+	serverconfig.DefaultGivenRole = serverconfigDescGivenRole.Default.(string)
+	// serverconfigDescExcludedChannels is the schema descriptor for excluded_channels field.
+	serverconfigDescExcludedChannels := serverconfigFields[12].Descriptor()
+	// serverconfig.DefaultExcludedChannels holds the default value on creation for the excluded_channels field.
+	serverconfig.DefaultExcludedChannels = serverconfigDescExcludedChannels.Default.([]string)
+	// serverconfigDescExcludedRoles is the schema descriptor for excluded_roles field.
+	serverconfigDescExcludedRoles := serverconfigFields[13].Descriptor()
+	// serverconfig.DefaultExcludedRoles holds the default value on creation for the excluded_roles field.
+	serverconfig.DefaultExcludedRoles = serverconfigDescExcludedRoles.Default.([]string)
+	// serverconfigDescExcludedUsers is the schema descriptor for excluded_users field.
+	serverconfigDescExcludedUsers := serverconfigFields[14].Descriptor()
+	// serverconfig.DefaultExcludedUsers holds the default value on creation for the excluded_users field.
+	serverconfig.DefaultExcludedUsers = serverconfigDescExcludedUsers.Default.([]string)
 	// serverconfigDescRatelimitMessage is the schema descriptor for ratelimit_message field.
 	serverconfigDescRatelimitMessage := serverconfigFields[15].Descriptor()
 	// serverconfig.DefaultRatelimitMessage holds the default value on creation for the ratelimit_message field.
 	serverconfig.DefaultRatelimitMessage = serverconfigDescRatelimitMessage.Default.(int)
+	spammerMixin := schema.Spammer{}.Mixin()
+	spammerMixinFields0 := spammerMixin[0].Fields()
+	_ = spammerMixinFields0
+	spammerFields := schema.Spammer{}.Fields()
+	_ = spammerFields
+	// spammerDescCreateTime is the schema descriptor for create_time field.
+	spammerDescCreateTime := spammerMixinFields0[0].Descriptor()
+	// spammer.DefaultCreateTime holds the default value on creation for the create_time field.
+	spammer.DefaultCreateTime = spammerDescCreateTime.Default.(func() time.Time)
+	// spammerDescUpdateTime is the schema descriptor for update_time field.
+	spammerDescUpdateTime := spammerMixinFields0[1].Descriptor()
+	// spammer.DefaultUpdateTime holds the default value on creation for the update_time field.
+	spammer.DefaultUpdateTime = spammerDescUpdateTime.Default.(func() time.Time)
+	// spammer.UpdateDefaultUpdateTime holds the default value on update for the update_time field.
+	spammer.UpdateDefaultUpdateTime = spammerDescUpdateTime.UpdateDefault.(func() time.Time)
+	// spammerDescLastFlagged is the schema descriptor for last_flagged field.
+	spammerDescLastFlagged := spammerFields[2].Descriptor()
+	// spammer.DefaultLastFlagged holds the default value on creation for the last_flagged field.
+	spammer.DefaultLastFlagged = spammerDescLastFlagged.Default.(func() time.Time)
 	wordblacklistMixin := schema.WordBlacklist{}.Mixin()
 	wordblacklistMixinFields0 := wordblacklistMixin[0].Fields()
 	_ = wordblacklistMixinFields0

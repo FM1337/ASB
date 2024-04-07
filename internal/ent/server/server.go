@@ -18,28 +18,48 @@ const (
 	FieldCreateTime = "create_time"
 	// FieldUpdateTime holds the string denoting the update_time field in the database.
 	FieldUpdateTime = "update_time"
+	// FieldServerID holds the string denoting the server_id field in the database.
+	FieldServerID = "server_id"
 	// FieldOwnerID holds the string denoting the owner_id field in the database.
 	FieldOwnerID = "owner_id"
 	// FieldEnabled holds the string denoting the enabled field in the database.
 	FieldEnabled = "enabled"
 	// EdgeConfiguration holds the string denoting the configuration edge name in mutations.
 	EdgeConfiguration = "configuration"
+	// EdgeSpammer holds the string denoting the spammer edge name in mutations.
+	EdgeSpammer = "spammer"
 	// EdgeWordBlacklist holds the string denoting the word_blacklist edge name in mutations.
 	EdgeWordBlacklist = "word_blacklist"
+	// EdgeCooldown holds the string denoting the cooldown edge name in mutations.
+	EdgeCooldown = "cooldown"
 	// Table holds the table name of the server in the database.
 	Table = "servers"
 	// ConfigurationTable is the table that holds the configuration relation/edge.
-	ConfigurationTable = "servers"
+	ConfigurationTable = "server_configs"
 	// ConfigurationInverseTable is the table name for the ServerConfig entity.
 	// It exists in this package in order to avoid circular dependency with the "serverconfig" package.
 	ConfigurationInverseTable = "server_configs"
 	// ConfigurationColumn is the table column denoting the configuration relation/edge.
 	ConfigurationColumn = "server_configuration"
+	// SpammerTable is the table that holds the spammer relation/edge.
+	SpammerTable = "spammers"
+	// SpammerInverseTable is the table name for the Spammer entity.
+	// It exists in this package in order to avoid circular dependency with the "spammer" package.
+	SpammerInverseTable = "spammers"
+	// SpammerColumn is the table column denoting the spammer relation/edge.
+	SpammerColumn = "server_spammer"
 	// WordBlacklistTable is the table that holds the word_blacklist relation/edge. The primary key declared below.
 	WordBlacklistTable = "server_word_blacklist"
 	// WordBlacklistInverseTable is the table name for the WordBlacklist entity.
 	// It exists in this package in order to avoid circular dependency with the "wordblacklist" package.
 	WordBlacklistInverseTable = "word_blacklists"
+	// CooldownTable is the table that holds the cooldown relation/edge.
+	CooldownTable = "cooldowns"
+	// CooldownInverseTable is the table name for the Cooldown entity.
+	// It exists in this package in order to avoid circular dependency with the "cooldown" package.
+	CooldownInverseTable = "cooldowns"
+	// CooldownColumn is the table column denoting the cooldown relation/edge.
+	CooldownColumn = "server_cooldown"
 )
 
 // Columns holds all SQL columns for server fields.
@@ -47,14 +67,9 @@ var Columns = []string{
 	FieldID,
 	FieldCreateTime,
 	FieldUpdateTime,
+	FieldServerID,
 	FieldOwnerID,
 	FieldEnabled,
-}
-
-// ForeignKeys holds the SQL foreign-keys that are owned by the "servers"
-// table and are not defined as standalone fields in the schema.
-var ForeignKeys = []string{
-	"server_configuration",
 }
 
 var (
@@ -67,11 +82,6 @@ var (
 func ValidColumn(column string) bool {
 	for i := range Columns {
 		if column == Columns[i] {
-			return true
-		}
-	}
-	for i := range ForeignKeys {
-		if column == ForeignKeys[i] {
 			return true
 		}
 	}
@@ -107,6 +117,11 @@ func ByUpdateTime(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUpdateTime, opts...).ToFunc()
 }
 
+// ByServerID orders the results by the server_id field.
+func ByServerID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldServerID, opts...).ToFunc()
+}
+
 // ByOwnerID orders the results by the owner_id field.
 func ByOwnerID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldOwnerID, opts...).ToFunc()
@@ -124,6 +139,13 @@ func ByConfigurationField(field string, opts ...sql.OrderTermOption) OrderOption
 	}
 }
 
+// BySpammerField orders the results by spammer field.
+func BySpammerField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newSpammerStep(), sql.OrderByField(field, opts...))
+	}
+}
+
 // ByWordBlacklistCount orders the results by word_blacklist count.
 func ByWordBlacklistCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -137,11 +159,32 @@ func ByWordBlacklist(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newWordBlacklistStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByCooldownCount orders the results by cooldown count.
+func ByCooldownCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newCooldownStep(), opts...)
+	}
+}
+
+// ByCooldown orders the results by cooldown terms.
+func ByCooldown(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCooldownStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newConfigurationStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ConfigurationInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.M2O, false, ConfigurationTable, ConfigurationColumn),
+		sqlgraph.Edge(sqlgraph.O2O, false, ConfigurationTable, ConfigurationColumn),
+	)
+}
+func newSpammerStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(SpammerInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2O, false, SpammerTable, SpammerColumn),
 	)
 }
 func newWordBlacklistStep() *sqlgraph.Step {
@@ -149,5 +192,12 @@ func newWordBlacklistStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(WordBlacklistInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2M, false, WordBlacklistTable, WordBlacklistPrimaryKey...),
+	)
+}
+func newCooldownStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CooldownInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, CooldownTable, CooldownColumn),
 	)
 }

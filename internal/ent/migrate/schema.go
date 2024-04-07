@@ -8,28 +8,45 @@ import (
 )
 
 var (
-	// ServersColumns holds the columns for the "servers" table.
-	ServersColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeString, Unique: true},
+	// CooldownsColumns holds the columns for the "cooldowns" table.
+	CooldownsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
 		{Name: "create_time", Type: field.TypeTime},
 		{Name: "update_time", Type: field.TypeTime},
+		{Name: "user_id", Type: field.TypeString},
+		{Name: "hash", Type: field.TypeString},
+		{Name: "count", Type: field.TypeInt, Default: 1},
+		{Name: "resets_at", Type: field.TypeTime},
+		{Name: "server_cooldown", Type: field.TypeInt},
+	}
+	// CooldownsTable holds the schema information for the "cooldowns" table.
+	CooldownsTable = &schema.Table{
+		Name:       "cooldowns",
+		Columns:    CooldownsColumns,
+		PrimaryKey: []*schema.Column{CooldownsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "cooldowns_servers_cooldown",
+				Columns:    []*schema.Column{CooldownsColumns[7]},
+				RefColumns: []*schema.Column{ServersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
+	// ServersColumns holds the columns for the "servers" table.
+	ServersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "create_time", Type: field.TypeTime},
+		{Name: "update_time", Type: field.TypeTime},
+		{Name: "server_id", Type: field.TypeString, Unique: true},
 		{Name: "owner_id", Type: field.TypeString},
 		{Name: "enabled", Type: field.TypeBool, Default: false},
-		{Name: "server_configuration", Type: field.TypeInt},
 	}
 	// ServersTable holds the schema information for the "servers" table.
 	ServersTable = &schema.Table{
 		Name:       "servers",
 		Columns:    ServersColumns,
 		PrimaryKey: []*schema.Column{ServersColumns[0]},
-		ForeignKeys: []*schema.ForeignKey{
-			{
-				Symbol:     "servers_server_configs_configuration",
-				Columns:    []*schema.Column{ServersColumns[5]},
-				RefColumns: []*schema.Column{ServerConfigsColumns[0]},
-				OnDelete:   schema.NoAction,
-			},
-		},
 	}
 	// ServerConfigsColumns holds the columns for the "server_configs" table.
 	ServerConfigsColumns = []*schema.Column{
@@ -46,21 +63,54 @@ var (
 		{Name: "ratelimit", Type: field.TypeBool, Default: false},
 		{Name: "alerts", Type: field.TypeBool, Default: false},
 		{Name: "flag_links", Type: field.TypeBool, Default: false},
-		{Name: "log_channel", Type: field.TypeString},
+		{Name: "log_channel", Type: field.TypeString, Default: ""},
+		{Name: "given_role", Type: field.TypeString, Default: ""},
 		{Name: "excluded_channels", Type: field.TypeJSON},
 		{Name: "excluded_roles", Type: field.TypeJSON},
 		{Name: "excluded_users", Type: field.TypeJSON},
-		{Name: "given_role", Type: field.TypeString},
 		{Name: "ratelimit_message", Type: field.TypeInt, Default: 3},
 		{Name: "ratelimit_time", Type: field.TypeEnum, Enums: []string{"30s", "1m", "2m", "3m", "4m", "5m"}, Default: "5m"},
 		{Name: "timeout_time", Type: field.TypeEnum, Enums: []string{"60s", "5m", "10m", "1h", "1d", "1w"}, Default: "1h"},
 		{Name: "ban_delete_message_time", Type: field.TypeEnum, Enums: []string{"1h", "6h", "12h", "1d", "3d", "1w"}, Default: "1h"},
+		{Name: "server_configuration", Type: field.TypeInt, Unique: true, Nullable: true},
 	}
 	// ServerConfigsTable holds the schema information for the "server_configs" table.
 	ServerConfigsTable = &schema.Table{
 		Name:       "server_configs",
 		Columns:    ServerConfigsColumns,
 		PrimaryKey: []*schema.Column{ServerConfigsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "server_configs_servers_configuration",
+				Columns:    []*schema.Column{ServerConfigsColumns[22]},
+				RefColumns: []*schema.Column{ServersColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+	}
+	// SpammersColumns holds the columns for the "spammers" table.
+	SpammersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "create_time", Type: field.TypeTime},
+		{Name: "update_time", Type: field.TypeTime},
+		{Name: "user_id", Type: field.TypeString},
+		{Name: "removed_roles", Type: field.TypeJSON, Nullable: true},
+		{Name: "last_flagged", Type: field.TypeTime},
+		{Name: "server_spammer", Type: field.TypeInt, Unique: true},
+	}
+	// SpammersTable holds the schema information for the "spammers" table.
+	SpammersTable = &schema.Table{
+		Name:       "spammers",
+		Columns:    SpammersColumns,
+		PrimaryKey: []*schema.Column{SpammersColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "spammers_servers_spammer",
+				Columns:    []*schema.Column{SpammersColumns[6]},
+				RefColumns: []*schema.Column{ServersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
 	}
 	// WordBlacklistsColumns holds the columns for the "word_blacklists" table.
 	WordBlacklistsColumns = []*schema.Column{
@@ -77,7 +127,7 @@ var (
 	}
 	// ServerWordBlacklistColumns holds the columns for the "server_word_blacklist" table.
 	ServerWordBlacklistColumns = []*schema.Column{
-		{Name: "server_id", Type: field.TypeString},
+		{Name: "server_id", Type: field.TypeInt},
 		{Name: "word_blacklist_id", Type: field.TypeInt},
 	}
 	// ServerWordBlacklistTable holds the schema information for the "server_word_blacklist" table.
@@ -102,15 +152,19 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		CooldownsTable,
 		ServersTable,
 		ServerConfigsTable,
+		SpammersTable,
 		WordBlacklistsTable,
 		ServerWordBlacklistTable,
 	}
 )
 
 func init() {
-	ServersTable.ForeignKeys[0].RefTable = ServerConfigsTable
+	CooldownsTable.ForeignKeys[0].RefTable = ServersTable
+	ServerConfigsTable.ForeignKeys[0].RefTable = ServersTable
+	SpammersTable.ForeignKeys[0].RefTable = ServersTable
 	ServerWordBlacklistTable.ForeignKeys[0].RefTable = ServersTable
 	ServerWordBlacklistTable.ForeignKeys[1].RefTable = WordBlacklistsTable
 }

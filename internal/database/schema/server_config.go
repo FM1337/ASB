@@ -27,11 +27,11 @@ func (ServerConfig) Fields() []ent.Field {
 		field.Bool("alerts").Default(false).Comment("Indicates if an alert should be posted to the alert channel for a server when a spammer is detected"),
 		field.Bool("flag_links").Default(false).Comment("Indicates if a user should be monitored if they post a message containing a URL"),
 
-		field.String("log_channel").Comment("The alert/log channel for a server"),
-		field.Strings("excluded_channels").Comment("Channels listed should not be monitored for spammers"),
-		field.Strings("excluded_roles").Comment("Roles that should be ignored for spam checks"),
-		field.Strings("excluded_users").Comment("Users that should be ignored for spam checks"),
-		field.String("given_role").Comment("The role to give to a spammer if give_role is true"),
+		field.String("log_channel").Default("").Comment("The alert/log channel for a server"),
+		field.String("given_role").Default("").Comment("The role to give to a spammer if give_role is true"),
+		field.Strings("excluded_channels").Default([]string{}).Comment("Channels listed should not be monitored for spammers"),
+		field.Strings("excluded_roles").Default([]string{}).Comment("Roles that should be ignored for spam checks"),
+		field.Strings("excluded_users").Default([]string{}).Comment("Users that should be ignored for spam checks"),
 
 		field.Int("ratelimit_message").Default(3).Comment("The amount of times the same message can be sent within the rate limit period before being considered spam"),
 
@@ -49,7 +49,7 @@ func (ServerConfig) Mixin() []ent.Mixin {
 
 func (ServerConfig) Edges() []ent.Edge {
 	return []ent.Edge{
-		edge.From("server", Server.Type).Ref("configuration"),
+		edge.From("server", Server.Type).Ref("configuration").Unique(),
 	}
 }
 

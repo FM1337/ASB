@@ -6,11 +6,17 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// Cooldown is the predicate function for cooldown builders.
+type Cooldown func(*sql.Selector)
+
 // Server is the predicate function for server builders.
 type Server func(*sql.Selector)
 
 // ServerConfig is the predicate function for serverconfig builders.
 type ServerConfig func(*sql.Selector)
+
+// Spammer is the predicate function for spammer builders.
+type Spammer func(*sql.Selector)
 
 // WordBlacklist is the predicate function for wordblacklist builders.
 type WordBlacklist func(*sql.Selector)

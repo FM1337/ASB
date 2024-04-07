@@ -197,6 +197,28 @@ func (scc *ServerConfigCreate) SetLogChannel(s string) *ServerConfigCreate {
 	return scc
 }
 
+// SetNillableLogChannel sets the "log_channel" field if the given value is not nil.
+func (scc *ServerConfigCreate) SetNillableLogChannel(s *string) *ServerConfigCreate {
+	if s != nil {
+		scc.SetLogChannel(*s)
+	}
+	return scc
+}
+
+// SetGivenRole sets the "given_role" field.
+func (scc *ServerConfigCreate) SetGivenRole(s string) *ServerConfigCreate {
+	scc.mutation.SetGivenRole(s)
+	return scc
+}
+
+// SetNillableGivenRole sets the "given_role" field if the given value is not nil.
+func (scc *ServerConfigCreate) SetNillableGivenRole(s *string) *ServerConfigCreate {
+	if s != nil {
+		scc.SetGivenRole(*s)
+	}
+	return scc
+}
+
 // SetExcludedChannels sets the "excluded_channels" field.
 func (scc *ServerConfigCreate) SetExcludedChannels(s []string) *ServerConfigCreate {
 	scc.mutation.SetExcludedChannels(s)
@@ -212,12 +234,6 @@ func (scc *ServerConfigCreate) SetExcludedRoles(s []string) *ServerConfigCreate 
 // SetExcludedUsers sets the "excluded_users" field.
 func (scc *ServerConfigCreate) SetExcludedUsers(s []string) *ServerConfigCreate {
 	scc.mutation.SetExcludedUsers(s)
-	return scc
-}
-
-// SetGivenRole sets the "given_role" field.
-func (scc *ServerConfigCreate) SetGivenRole(s string) *ServerConfigCreate {
-	scc.mutation.SetGivenRole(s)
 	return scc
 }
 
@@ -277,19 +293,23 @@ func (scc *ServerConfigCreate) SetNillableBanDeleteMessageTime(sdmt *serverconfi
 	return scc
 }
 
-// AddServerIDs adds the "server" edge to the Server entity by IDs.
-func (scc *ServerConfigCreate) AddServerIDs(ids ...string) *ServerConfigCreate {
-	scc.mutation.AddServerIDs(ids...)
+// SetServerID sets the "server" edge to the Server entity by ID.
+func (scc *ServerConfigCreate) SetServerID(id int) *ServerConfigCreate {
+	scc.mutation.SetServerID(id)
 	return scc
 }
 
-// AddServer adds the "server" edges to the Server entity.
-func (scc *ServerConfigCreate) AddServer(s ...*Server) *ServerConfigCreate {
-	ids := make([]string, len(s))
-	for i := range s {
-		ids[i] = s[i].ID
+// SetNillableServerID sets the "server" edge to the Server entity by ID if the given value is not nil.
+func (scc *ServerConfigCreate) SetNillableServerID(id *int) *ServerConfigCreate {
+	if id != nil {
+		scc = scc.SetServerID(*id)
 	}
-	return scc.AddServerIDs(ids...)
+	return scc
+}
+
+// SetServer sets the "server" edge to the Server entity.
+func (scc *ServerConfigCreate) SetServer(s *Server) *ServerConfigCreate {
+	return scc.SetServerID(s.ID)
 }
 
 // Mutation returns the ServerConfigMutation object of the builder.
@@ -375,6 +395,26 @@ func (scc *ServerConfigCreate) defaults() {
 		v := serverconfig.DefaultFlagLinks
 		scc.mutation.SetFlagLinks(v)
 	}
+	if _, ok := scc.mutation.LogChannel(); !ok {
+		v := serverconfig.DefaultLogChannel
+		scc.mutation.SetLogChannel(v)
+	}
+	if _, ok := scc.mutation.GivenRole(); !ok {
+		v := serverconfig.DefaultGivenRole
+		scc.mutation.SetGivenRole(v)
+	}
+	if _, ok := scc.mutation.ExcludedChannels(); !ok {
+		v := serverconfig.DefaultExcludedChannels
+		scc.mutation.SetExcludedChannels(v)
+	}
+	if _, ok := scc.mutation.ExcludedRoles(); !ok {
+		v := serverconfig.DefaultExcludedRoles
+		scc.mutation.SetExcludedRoles(v)
+	}
+	if _, ok := scc.mutation.ExcludedUsers(); !ok {
+		v := serverconfig.DefaultExcludedUsers
+		scc.mutation.SetExcludedUsers(v)
+	}
 	if _, ok := scc.mutation.RatelimitMessage(); !ok {
 		v := serverconfig.DefaultRatelimitMessage
 		scc.mutation.SetRatelimitMessage(v)
@@ -434,6 +474,9 @@ func (scc *ServerConfigCreate) check() error {
 	if _, ok := scc.mutation.LogChannel(); !ok {
 		return &ValidationError{Name: "log_channel", err: errors.New(`ent: missing required field "ServerConfig.log_channel"`)}
 	}
+	if _, ok := scc.mutation.GivenRole(); !ok {
+		return &ValidationError{Name: "given_role", err: errors.New(`ent: missing required field "ServerConfig.given_role"`)}
+	}
 	if _, ok := scc.mutation.ExcludedChannels(); !ok {
 		return &ValidationError{Name: "excluded_channels", err: errors.New(`ent: missing required field "ServerConfig.excluded_channels"`)}
 	}
@@ -442,9 +485,6 @@ func (scc *ServerConfigCreate) check() error {
 	}
 	if _, ok := scc.mutation.ExcludedUsers(); !ok {
 		return &ValidationError{Name: "excluded_users", err: errors.New(`ent: missing required field "ServerConfig.excluded_users"`)}
-	}
-	if _, ok := scc.mutation.GivenRole(); !ok {
-		return &ValidationError{Name: "given_role", err: errors.New(`ent: missing required field "ServerConfig.given_role"`)}
 	}
 	if _, ok := scc.mutation.RatelimitMessage(); !ok {
 		return &ValidationError{Name: "ratelimit_message", err: errors.New(`ent: missing required field "ServerConfig.ratelimit_message"`)}
@@ -552,6 +592,10 @@ func (scc *ServerConfigCreate) createSpec() (*ServerConfig, *sqlgraph.CreateSpec
 		_spec.SetField(serverconfig.FieldLogChannel, field.TypeString, value)
 		_node.LogChannel = value
 	}
+	if value, ok := scc.mutation.GivenRole(); ok {
+		_spec.SetField(serverconfig.FieldGivenRole, field.TypeString, value)
+		_node.GivenRole = value
+	}
 	if value, ok := scc.mutation.ExcludedChannels(); ok {
 		_spec.SetField(serverconfig.FieldExcludedChannels, field.TypeJSON, value)
 		_node.ExcludedChannels = value
@@ -563,10 +607,6 @@ func (scc *ServerConfigCreate) createSpec() (*ServerConfig, *sqlgraph.CreateSpec
 	if value, ok := scc.mutation.ExcludedUsers(); ok {
 		_spec.SetField(serverconfig.FieldExcludedUsers, field.TypeJSON, value)
 		_node.ExcludedUsers = value
-	}
-	if value, ok := scc.mutation.GivenRole(); ok {
-		_spec.SetField(serverconfig.FieldGivenRole, field.TypeString, value)
-		_node.GivenRole = value
 	}
 	if value, ok := scc.mutation.RatelimitMessage(); ok {
 		_spec.SetField(serverconfig.FieldRatelimitMessage, field.TypeInt, value)
@@ -586,18 +626,19 @@ func (scc *ServerConfigCreate) createSpec() (*ServerConfig, *sqlgraph.CreateSpec
 	}
 	if nodes := scc.mutation.ServerIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
+			Rel:     sqlgraph.O2O,
 			Inverse: true,
 			Table:   serverconfig.ServerTable,
 			Columns: []string{serverconfig.ServerColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
+		_node.server_configuration = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -796,6 +837,18 @@ func (u *ServerConfigUpsert) UpdateLogChannel() *ServerConfigUpsert {
 	return u
 }
 
+// SetGivenRole sets the "given_role" field.
+func (u *ServerConfigUpsert) SetGivenRole(v string) *ServerConfigUpsert {
+	u.Set(serverconfig.FieldGivenRole, v)
+	return u
+}
+
+// UpdateGivenRole sets the "given_role" field to the value that was provided on create.
+func (u *ServerConfigUpsert) UpdateGivenRole() *ServerConfigUpsert {
+	u.SetExcluded(serverconfig.FieldGivenRole)
+	return u
+}
+
 // SetExcludedChannels sets the "excluded_channels" field.
 func (u *ServerConfigUpsert) SetExcludedChannels(v []string) *ServerConfigUpsert {
 	u.Set(serverconfig.FieldExcludedChannels, v)
@@ -829,18 +882,6 @@ func (u *ServerConfigUpsert) SetExcludedUsers(v []string) *ServerConfigUpsert {
 // UpdateExcludedUsers sets the "excluded_users" field to the value that was provided on create.
 func (u *ServerConfigUpsert) UpdateExcludedUsers() *ServerConfigUpsert {
 	u.SetExcluded(serverconfig.FieldExcludedUsers)
-	return u
-}
-
-// SetGivenRole sets the "given_role" field.
-func (u *ServerConfigUpsert) SetGivenRole(v string) *ServerConfigUpsert {
-	u.Set(serverconfig.FieldGivenRole, v)
-	return u
-}
-
-// UpdateGivenRole sets the "given_role" field to the value that was provided on create.
-func (u *ServerConfigUpsert) UpdateGivenRole() *ServerConfigUpsert {
-	u.SetExcluded(serverconfig.FieldGivenRole)
 	return u
 }
 
@@ -1111,6 +1152,20 @@ func (u *ServerConfigUpsertOne) UpdateLogChannel() *ServerConfigUpsertOne {
 	})
 }
 
+// SetGivenRole sets the "given_role" field.
+func (u *ServerConfigUpsertOne) SetGivenRole(v string) *ServerConfigUpsertOne {
+	return u.Update(func(s *ServerConfigUpsert) {
+		s.SetGivenRole(v)
+	})
+}
+
+// UpdateGivenRole sets the "given_role" field to the value that was provided on create.
+func (u *ServerConfigUpsertOne) UpdateGivenRole() *ServerConfigUpsertOne {
+	return u.Update(func(s *ServerConfigUpsert) {
+		s.UpdateGivenRole()
+	})
+}
+
 // SetExcludedChannels sets the "excluded_channels" field.
 func (u *ServerConfigUpsertOne) SetExcludedChannels(v []string) *ServerConfigUpsertOne {
 	return u.Update(func(s *ServerConfigUpsert) {
@@ -1150,20 +1205,6 @@ func (u *ServerConfigUpsertOne) SetExcludedUsers(v []string) *ServerConfigUpsert
 func (u *ServerConfigUpsertOne) UpdateExcludedUsers() *ServerConfigUpsertOne {
 	return u.Update(func(s *ServerConfigUpsert) {
 		s.UpdateExcludedUsers()
-	})
-}
-
-// SetGivenRole sets the "given_role" field.
-func (u *ServerConfigUpsertOne) SetGivenRole(v string) *ServerConfigUpsertOne {
-	return u.Update(func(s *ServerConfigUpsert) {
-		s.SetGivenRole(v)
-	})
-}
-
-// UpdateGivenRole sets the "given_role" field to the value that was provided on create.
-func (u *ServerConfigUpsertOne) UpdateGivenRole() *ServerConfigUpsertOne {
-	return u.Update(func(s *ServerConfigUpsert) {
-		s.UpdateGivenRole()
 	})
 }
 
@@ -1609,6 +1650,20 @@ func (u *ServerConfigUpsertBulk) UpdateLogChannel() *ServerConfigUpsertBulk {
 	})
 }
 
+// SetGivenRole sets the "given_role" field.
+func (u *ServerConfigUpsertBulk) SetGivenRole(v string) *ServerConfigUpsertBulk {
+	return u.Update(func(s *ServerConfigUpsert) {
+		s.SetGivenRole(v)
+	})
+}
+
+// UpdateGivenRole sets the "given_role" field to the value that was provided on create.
+func (u *ServerConfigUpsertBulk) UpdateGivenRole() *ServerConfigUpsertBulk {
+	return u.Update(func(s *ServerConfigUpsert) {
+		s.UpdateGivenRole()
+	})
+}
+
 // SetExcludedChannels sets the "excluded_channels" field.
 func (u *ServerConfigUpsertBulk) SetExcludedChannels(v []string) *ServerConfigUpsertBulk {
 	return u.Update(func(s *ServerConfigUpsert) {
@@ -1648,20 +1703,6 @@ func (u *ServerConfigUpsertBulk) SetExcludedUsers(v []string) *ServerConfigUpser
 func (u *ServerConfigUpsertBulk) UpdateExcludedUsers() *ServerConfigUpsertBulk {
 	return u.Update(func(s *ServerConfigUpsert) {
 		s.UpdateExcludedUsers()
-	})
-}
-
-// SetGivenRole sets the "given_role" field.
-func (u *ServerConfigUpsertBulk) SetGivenRole(v string) *ServerConfigUpsertBulk {
-	return u.Update(func(s *ServerConfigUpsert) {
-		s.SetGivenRole(v)
-	})
-}
-
-// UpdateGivenRole sets the "given_role" field to the value that was provided on create.
-func (u *ServerConfigUpsertBulk) UpdateGivenRole() *ServerConfigUpsertBulk {
-	return u.Update(func(s *ServerConfigUpsert) {
-		s.UpdateGivenRole()
 	})
 }
 

@@ -545,7 +545,7 @@ func HasServer() predicate.ServerConfig {
 	return predicate.ServerConfig(func(s *sql.Selector) {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, true, ServerTable, ServerColumn),
+			sqlgraph.Edge(sqlgraph.O2O, true, ServerTable, ServerColumn),
 		)
 		sqlgraph.HasNeighbors(s, step)
 	})

@@ -3,9 +3,11 @@
 package ent
 
 import (
+	"github.com/FM1337/ASB/internal/ent/cooldown"
 	"github.com/FM1337/ASB/internal/ent/predicate"
 	"github.com/FM1337/ASB/internal/ent/server"
 	"github.com/FM1337/ASB/internal/ent/serverconfig"
+	"github.com/FM1337/ASB/internal/ent/spammer"
 	"github.com/FM1337/ASB/internal/ent/wordblacklist"
 
 	"entgo.io/ent/dialect/sql"
@@ -16,13 +18,32 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 3)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 5)}
 	graph.Nodes[0] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   cooldown.Table,
+			Columns: cooldown.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeInt,
+				Column: cooldown.FieldID,
+			},
+		},
+		Type: "Cooldown",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			cooldown.FieldCreateTime: {Type: field.TypeTime, Column: cooldown.FieldCreateTime},
+			cooldown.FieldUpdateTime: {Type: field.TypeTime, Column: cooldown.FieldUpdateTime},
+			cooldown.FieldUserID:     {Type: field.TypeString, Column: cooldown.FieldUserID},
+			cooldown.FieldHash:       {Type: field.TypeString, Column: cooldown.FieldHash},
+			cooldown.FieldCount:      {Type: field.TypeInt, Column: cooldown.FieldCount},
+			cooldown.FieldResetsAt:   {Type: field.TypeTime, Column: cooldown.FieldResetsAt},
+		},
+	}
+	graph.Nodes[1] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   server.Table,
 			Columns: server.Columns,
 			ID: &sqlgraph.FieldSpec{
-				Type:   field.TypeString,
+				Type:   field.TypeInt,
 				Column: server.FieldID,
 			},
 		},
@@ -30,11 +51,12 @@ var schemaGraph = func() *sqlgraph.Schema {
 		Fields: map[string]*sqlgraph.FieldSpec{
 			server.FieldCreateTime: {Type: field.TypeTime, Column: server.FieldCreateTime},
 			server.FieldUpdateTime: {Type: field.TypeTime, Column: server.FieldUpdateTime},
+			server.FieldServerID:   {Type: field.TypeString, Column: server.FieldServerID},
 			server.FieldOwnerID:    {Type: field.TypeString, Column: server.FieldOwnerID},
 			server.FieldEnabled:    {Type: field.TypeBool, Column: server.FieldEnabled},
 		},
 	}
-	graph.Nodes[1] = &sqlgraph.Node{
+	graph.Nodes[2] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   serverconfig.Table,
 			Columns: serverconfig.Columns,
@@ -58,17 +80,35 @@ var schemaGraph = func() *sqlgraph.Schema {
 			serverconfig.FieldAlerts:               {Type: field.TypeBool, Column: serverconfig.FieldAlerts},
 			serverconfig.FieldFlagLinks:            {Type: field.TypeBool, Column: serverconfig.FieldFlagLinks},
 			serverconfig.FieldLogChannel:           {Type: field.TypeString, Column: serverconfig.FieldLogChannel},
+			serverconfig.FieldGivenRole:            {Type: field.TypeString, Column: serverconfig.FieldGivenRole},
 			serverconfig.FieldExcludedChannels:     {Type: field.TypeJSON, Column: serverconfig.FieldExcludedChannels},
 			serverconfig.FieldExcludedRoles:        {Type: field.TypeJSON, Column: serverconfig.FieldExcludedRoles},
 			serverconfig.FieldExcludedUsers:        {Type: field.TypeJSON, Column: serverconfig.FieldExcludedUsers},
-			serverconfig.FieldGivenRole:            {Type: field.TypeString, Column: serverconfig.FieldGivenRole},
 			serverconfig.FieldRatelimitMessage:     {Type: field.TypeInt, Column: serverconfig.FieldRatelimitMessage},
 			serverconfig.FieldRatelimitTime:        {Type: field.TypeEnum, Column: serverconfig.FieldRatelimitTime},
 			serverconfig.FieldTimeoutTime:          {Type: field.TypeEnum, Column: serverconfig.FieldTimeoutTime},
 			serverconfig.FieldBanDeleteMessageTime: {Type: field.TypeEnum, Column: serverconfig.FieldBanDeleteMessageTime},
 		},
 	}
-	graph.Nodes[2] = &sqlgraph.Node{
+	graph.Nodes[3] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   spammer.Table,
+			Columns: spammer.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeInt,
+				Column: spammer.FieldID,
+			},
+		},
+		Type: "Spammer",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			spammer.FieldCreateTime:   {Type: field.TypeTime, Column: spammer.FieldCreateTime},
+			spammer.FieldUpdateTime:   {Type: field.TypeTime, Column: spammer.FieldUpdateTime},
+			spammer.FieldUserID:       {Type: field.TypeString, Column: spammer.FieldUserID},
+			spammer.FieldRemovedRoles: {Type: field.TypeJSON, Column: spammer.FieldRemovedRoles},
+			spammer.FieldLastFlagged:  {Type: field.TypeTime, Column: spammer.FieldLastFlagged},
+		},
+	}
+	graph.Nodes[4] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   wordblacklist.Table,
 			Columns: wordblacklist.Columns,
@@ -85,9 +125,21 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 	}
 	graph.MustAddE(
-		"configuration",
+		"server",
 		&sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   cooldown.ServerTable,
+			Columns: []string{cooldown.ServerColumn},
+			Bidi:    false,
+		},
+		"Cooldown",
+		"Server",
+	)
+	graph.MustAddE(
+		"configuration",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
 			Inverse: false,
 			Table:   server.ConfigurationTable,
 			Columns: []string{server.ConfigurationColumn},
@@ -95,6 +147,18 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		"Server",
 		"ServerConfig",
+	)
+	graph.MustAddE(
+		"spammer",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   server.SpammerTable,
+			Columns: []string{server.SpammerColumn},
+			Bidi:    false,
+		},
+		"Server",
+		"Spammer",
 	)
 	graph.MustAddE(
 		"word_blacklist",
@@ -109,15 +173,39 @@ var schemaGraph = func() *sqlgraph.Schema {
 		"WordBlacklist",
 	)
 	graph.MustAddE(
-		"server",
+		"cooldown",
 		&sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   server.CooldownTable,
+			Columns: []string{server.CooldownColumn},
+			Bidi:    false,
+		},
+		"Server",
+		"Cooldown",
+	)
+	graph.MustAddE(
+		"server",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
 			Inverse: true,
 			Table:   serverconfig.ServerTable,
 			Columns: []string{serverconfig.ServerColumn},
 			Bidi:    false,
 		},
 		"ServerConfig",
+		"Server",
+	)
+	graph.MustAddE(
+		"server",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: true,
+			Table:   spammer.ServerTable,
+			Columns: []string{spammer.ServerColumn},
+			Bidi:    false,
+		},
+		"Spammer",
 		"Server",
 	)
 	graph.MustAddE(
@@ -139,6 +227,90 @@ var schemaGraph = func() *sqlgraph.Schema {
 // All update, update-one and query builders implement this interface.
 type predicateAdder interface {
 	addPredicate(func(s *sql.Selector))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (cq *CooldownQuery) addPredicate(pred func(s *sql.Selector)) {
+	cq.predicates = append(cq.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the CooldownQuery builder.
+func (cq *CooldownQuery) Filter() *CooldownFilter {
+	return &CooldownFilter{config: cq.config, predicateAdder: cq}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *CooldownMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the CooldownMutation builder.
+func (m *CooldownMutation) Filter() *CooldownFilter {
+	return &CooldownFilter{config: m.config, predicateAdder: m}
+}
+
+// CooldownFilter provides a generic filtering capability at runtime for CooldownQuery.
+type CooldownFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *CooldownFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[0].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql int predicate on the id field.
+func (f *CooldownFilter) WhereID(p entql.IntP) {
+	f.Where(p.Field(cooldown.FieldID))
+}
+
+// WhereCreateTime applies the entql time.Time predicate on the create_time field.
+func (f *CooldownFilter) WhereCreateTime(p entql.TimeP) {
+	f.Where(p.Field(cooldown.FieldCreateTime))
+}
+
+// WhereUpdateTime applies the entql time.Time predicate on the update_time field.
+func (f *CooldownFilter) WhereUpdateTime(p entql.TimeP) {
+	f.Where(p.Field(cooldown.FieldUpdateTime))
+}
+
+// WhereUserID applies the entql string predicate on the user_id field.
+func (f *CooldownFilter) WhereUserID(p entql.StringP) {
+	f.Where(p.Field(cooldown.FieldUserID))
+}
+
+// WhereHash applies the entql string predicate on the hash field.
+func (f *CooldownFilter) WhereHash(p entql.StringP) {
+	f.Where(p.Field(cooldown.FieldHash))
+}
+
+// WhereCount applies the entql int predicate on the count field.
+func (f *CooldownFilter) WhereCount(p entql.IntP) {
+	f.Where(p.Field(cooldown.FieldCount))
+}
+
+// WhereResetsAt applies the entql time.Time predicate on the resets_at field.
+func (f *CooldownFilter) WhereResetsAt(p entql.TimeP) {
+	f.Where(p.Field(cooldown.FieldResetsAt))
+}
+
+// WhereHasServer applies a predicate to check if query has an edge server.
+func (f *CooldownFilter) WhereHasServer() {
+	f.Where(entql.HasEdge("server"))
+}
+
+// WhereHasServerWith applies a predicate to check if query has an edge server with a given conditions (other predicates).
+func (f *CooldownFilter) WhereHasServerWith(preds ...predicate.Server) {
+	f.Where(entql.HasEdgeWith("server", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
 }
 
 // addPredicate implements the predicateAdder interface.
@@ -170,14 +342,14 @@ type ServerFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *ServerFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[0].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[1].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
 }
 
-// WhereID applies the entql string predicate on the id field.
-func (f *ServerFilter) WhereID(p entql.StringP) {
+// WhereID applies the entql int predicate on the id field.
+func (f *ServerFilter) WhereID(p entql.IntP) {
 	f.Where(p.Field(server.FieldID))
 }
 
@@ -189,6 +361,11 @@ func (f *ServerFilter) WhereCreateTime(p entql.TimeP) {
 // WhereUpdateTime applies the entql time.Time predicate on the update_time field.
 func (f *ServerFilter) WhereUpdateTime(p entql.TimeP) {
 	f.Where(p.Field(server.FieldUpdateTime))
+}
+
+// WhereServerID applies the entql string predicate on the server_id field.
+func (f *ServerFilter) WhereServerID(p entql.StringP) {
+	f.Where(p.Field(server.FieldServerID))
 }
 
 // WhereOwnerID applies the entql string predicate on the owner_id field.
@@ -215,6 +392,20 @@ func (f *ServerFilter) WhereHasConfigurationWith(preds ...predicate.ServerConfig
 	})))
 }
 
+// WhereHasSpammer applies a predicate to check if query has an edge spammer.
+func (f *ServerFilter) WhereHasSpammer() {
+	f.Where(entql.HasEdge("spammer"))
+}
+
+// WhereHasSpammerWith applies a predicate to check if query has an edge spammer with a given conditions (other predicates).
+func (f *ServerFilter) WhereHasSpammerWith(preds ...predicate.Spammer) {
+	f.Where(entql.HasEdgeWith("spammer", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
 // WhereHasWordBlacklist applies a predicate to check if query has an edge word_blacklist.
 func (f *ServerFilter) WhereHasWordBlacklist() {
 	f.Where(entql.HasEdge("word_blacklist"))
@@ -223,6 +414,20 @@ func (f *ServerFilter) WhereHasWordBlacklist() {
 // WhereHasWordBlacklistWith applies a predicate to check if query has an edge word_blacklist with a given conditions (other predicates).
 func (f *ServerFilter) WhereHasWordBlacklistWith(preds ...predicate.WordBlacklist) {
 	f.Where(entql.HasEdgeWith("word_blacklist", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// WhereHasCooldown applies a predicate to check if query has an edge cooldown.
+func (f *ServerFilter) WhereHasCooldown() {
+	f.Where(entql.HasEdge("cooldown"))
+}
+
+// WhereHasCooldownWith applies a predicate to check if query has an edge cooldown with a given conditions (other predicates).
+func (f *ServerFilter) WhereHasCooldownWith(preds ...predicate.Cooldown) {
+	f.Where(entql.HasEdgeWith("cooldown", sqlgraph.WrapFunc(func(s *sql.Selector) {
 		for _, p := range preds {
 			p(s)
 		}
@@ -258,7 +463,7 @@ type ServerConfigFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *ServerConfigFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[1].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[2].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -334,6 +539,11 @@ func (f *ServerConfigFilter) WhereLogChannel(p entql.StringP) {
 	f.Where(p.Field(serverconfig.FieldLogChannel))
 }
 
+// WhereGivenRole applies the entql string predicate on the given_role field.
+func (f *ServerConfigFilter) WhereGivenRole(p entql.StringP) {
+	f.Where(p.Field(serverconfig.FieldGivenRole))
+}
+
 // WhereExcludedChannels applies the entql json.RawMessage predicate on the excluded_channels field.
 func (f *ServerConfigFilter) WhereExcludedChannels(p entql.BytesP) {
 	f.Where(p.Field(serverconfig.FieldExcludedChannels))
@@ -347,11 +557,6 @@ func (f *ServerConfigFilter) WhereExcludedRoles(p entql.BytesP) {
 // WhereExcludedUsers applies the entql json.RawMessage predicate on the excluded_users field.
 func (f *ServerConfigFilter) WhereExcludedUsers(p entql.BytesP) {
 	f.Where(p.Field(serverconfig.FieldExcludedUsers))
-}
-
-// WhereGivenRole applies the entql string predicate on the given_role field.
-func (f *ServerConfigFilter) WhereGivenRole(p entql.StringP) {
-	f.Where(p.Field(serverconfig.FieldGivenRole))
 }
 
 // WhereRatelimitMessage applies the entql int predicate on the ratelimit_message field.
@@ -389,6 +594,85 @@ func (f *ServerConfigFilter) WhereHasServerWith(preds ...predicate.Server) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (sq *SpammerQuery) addPredicate(pred func(s *sql.Selector)) {
+	sq.predicates = append(sq.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the SpammerQuery builder.
+func (sq *SpammerQuery) Filter() *SpammerFilter {
+	return &SpammerFilter{config: sq.config, predicateAdder: sq}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *SpammerMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the SpammerMutation builder.
+func (m *SpammerMutation) Filter() *SpammerFilter {
+	return &SpammerFilter{config: m.config, predicateAdder: m}
+}
+
+// SpammerFilter provides a generic filtering capability at runtime for SpammerQuery.
+type SpammerFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *SpammerFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[3].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql int predicate on the id field.
+func (f *SpammerFilter) WhereID(p entql.IntP) {
+	f.Where(p.Field(spammer.FieldID))
+}
+
+// WhereCreateTime applies the entql time.Time predicate on the create_time field.
+func (f *SpammerFilter) WhereCreateTime(p entql.TimeP) {
+	f.Where(p.Field(spammer.FieldCreateTime))
+}
+
+// WhereUpdateTime applies the entql time.Time predicate on the update_time field.
+func (f *SpammerFilter) WhereUpdateTime(p entql.TimeP) {
+	f.Where(p.Field(spammer.FieldUpdateTime))
+}
+
+// WhereUserID applies the entql string predicate on the user_id field.
+func (f *SpammerFilter) WhereUserID(p entql.StringP) {
+	f.Where(p.Field(spammer.FieldUserID))
+}
+
+// WhereRemovedRoles applies the entql json.RawMessage predicate on the removed_roles field.
+func (f *SpammerFilter) WhereRemovedRoles(p entql.BytesP) {
+	f.Where(p.Field(spammer.FieldRemovedRoles))
+}
+
+// WhereLastFlagged applies the entql time.Time predicate on the last_flagged field.
+func (f *SpammerFilter) WhereLastFlagged(p entql.TimeP) {
+	f.Where(p.Field(spammer.FieldLastFlagged))
+}
+
+// WhereHasServer applies a predicate to check if query has an edge server.
+func (f *SpammerFilter) WhereHasServer() {
+	f.Where(entql.HasEdge("server"))
+}
+
+// WhereHasServerWith applies a predicate to check if query has an edge server with a given conditions (other predicates).
+func (f *SpammerFilter) WhereHasServerWith(preds ...predicate.Server) {
+	f.Where(entql.HasEdgeWith("server", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (wbq *WordBlacklistQuery) addPredicate(pred func(s *sql.Selector)) {
 	wbq.predicates = append(wbq.predicates, pred)
 }
@@ -417,7 +701,7 @@ type WordBlacklistFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *WordBlacklistFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[2].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[4].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})

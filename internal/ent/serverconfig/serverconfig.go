@@ -41,14 +41,14 @@ const (
 	FieldFlagLinks = "flag_links"
 	// FieldLogChannel holds the string denoting the log_channel field in the database.
 	FieldLogChannel = "log_channel"
+	// FieldGivenRole holds the string denoting the given_role field in the database.
+	FieldGivenRole = "given_role"
 	// FieldExcludedChannels holds the string denoting the excluded_channels field in the database.
 	FieldExcludedChannels = "excluded_channels"
 	// FieldExcludedRoles holds the string denoting the excluded_roles field in the database.
 	FieldExcludedRoles = "excluded_roles"
 	// FieldExcludedUsers holds the string denoting the excluded_users field in the database.
 	FieldExcludedUsers = "excluded_users"
-	// FieldGivenRole holds the string denoting the given_role field in the database.
-	FieldGivenRole = "given_role"
 	// FieldRatelimitMessage holds the string denoting the ratelimit_message field in the database.
 	FieldRatelimitMessage = "ratelimit_message"
 	// FieldRatelimitTime holds the string denoting the ratelimit_time field in the database.
@@ -62,7 +62,7 @@ const (
 	// Table holds the table name of the serverconfig in the database.
 	Table = "server_configs"
 	// ServerTable is the table that holds the server relation/edge.
-	ServerTable = "servers"
+	ServerTable = "server_configs"
 	// ServerInverseTable is the table name for the Server entity.
 	// It exists in this package in order to avoid circular dependency with the "server" package.
 	ServerInverseTable = "servers"
@@ -86,20 +86,31 @@ var Columns = []string{
 	FieldAlerts,
 	FieldFlagLinks,
 	FieldLogChannel,
+	FieldGivenRole,
 	FieldExcludedChannels,
 	FieldExcludedRoles,
 	FieldExcludedUsers,
-	FieldGivenRole,
 	FieldRatelimitMessage,
 	FieldRatelimitTime,
 	FieldTimeoutTime,
 	FieldBanDeleteMessageTime,
 }
 
+// ForeignKeys holds the SQL foreign-keys that are owned by the "server_configs"
+// table and are not defined as standalone fields in the schema.
+var ForeignKeys = []string{
+	"server_configuration",
+}
+
 // ValidColumn reports if the column name is valid (part of the table columns).
 func ValidColumn(column string) bool {
 	for i := range Columns {
 		if column == Columns[i] {
+			return true
+		}
+	}
+	for i := range ForeignKeys {
+		if column == ForeignKeys[i] {
 			return true
 		}
 	}
@@ -133,6 +144,16 @@ var (
 	DefaultAlerts bool
 	// DefaultFlagLinks holds the default value on creation for the "flag_links" field.
 	DefaultFlagLinks bool
+	// DefaultLogChannel holds the default value on creation for the "log_channel" field.
+	DefaultLogChannel string
+	// DefaultGivenRole holds the default value on creation for the "given_role" field.
+	DefaultGivenRole string
+	// DefaultExcludedChannels holds the default value on creation for the "excluded_channels" field.
+	DefaultExcludedChannels []string
+	// DefaultExcludedRoles holds the default value on creation for the "excluded_roles" field.
+	DefaultExcludedRoles []string
+	// DefaultExcludedUsers holds the default value on creation for the "excluded_users" field.
+	DefaultExcludedUsers []string
 	// DefaultRatelimitMessage holds the default value on creation for the "ratelimit_message" field.
 	DefaultRatelimitMessage int
 )
@@ -325,23 +346,16 @@ func ByBanDeleteMessageTime(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBanDeleteMessageTime, opts...).ToFunc()
 }
 
-// ByServerCount orders the results by server count.
-func ByServerCount(opts ...sql.OrderTermOption) OrderOption {
+// ByServerField orders the results by server field.
+func ByServerField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newServerStep(), opts...)
-	}
-}
-
-// ByServer orders the results by server terms.
-func ByServer(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newServerStep(), append([]sql.OrderTerm{term}, terms...)...)
+		sqlgraph.OrderByNeighborTerms(s, newServerStep(), sql.OrderByField(field, opts...))
 	}
 }
 func newServerStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ServerInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, true, ServerTable, ServerColumn),
+		sqlgraph.Edge(sqlgraph.O2O, true, ServerTable, ServerColumn),
 	)
 }

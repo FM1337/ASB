@@ -191,6 +191,20 @@ func (scu *ServerConfigUpdate) SetNillableLogChannel(s *string) *ServerConfigUpd
 	return scu
 }
 
+// SetGivenRole sets the "given_role" field.
+func (scu *ServerConfigUpdate) SetGivenRole(s string) *ServerConfigUpdate {
+	scu.mutation.SetGivenRole(s)
+	return scu
+}
+
+// SetNillableGivenRole sets the "given_role" field if the given value is not nil.
+func (scu *ServerConfigUpdate) SetNillableGivenRole(s *string) *ServerConfigUpdate {
+	if s != nil {
+		scu.SetGivenRole(*s)
+	}
+	return scu
+}
+
 // SetExcludedChannels sets the "excluded_channels" field.
 func (scu *ServerConfigUpdate) SetExcludedChannels(s []string) *ServerConfigUpdate {
 	scu.mutation.SetExcludedChannels(s)
@@ -224,20 +238,6 @@ func (scu *ServerConfigUpdate) SetExcludedUsers(s []string) *ServerConfigUpdate 
 // AppendExcludedUsers appends s to the "excluded_users" field.
 func (scu *ServerConfigUpdate) AppendExcludedUsers(s []string) *ServerConfigUpdate {
 	scu.mutation.AppendExcludedUsers(s)
-	return scu
-}
-
-// SetGivenRole sets the "given_role" field.
-func (scu *ServerConfigUpdate) SetGivenRole(s string) *ServerConfigUpdate {
-	scu.mutation.SetGivenRole(s)
-	return scu
-}
-
-// SetNillableGivenRole sets the "given_role" field if the given value is not nil.
-func (scu *ServerConfigUpdate) SetNillableGivenRole(s *string) *ServerConfigUpdate {
-	if s != nil {
-		scu.SetGivenRole(*s)
-	}
 	return scu
 }
 
@@ -304,19 +304,23 @@ func (scu *ServerConfigUpdate) SetNillableBanDeleteMessageTime(sdmt *serverconfi
 	return scu
 }
 
-// AddServerIDs adds the "server" edge to the Server entity by IDs.
-func (scu *ServerConfigUpdate) AddServerIDs(ids ...string) *ServerConfigUpdate {
-	scu.mutation.AddServerIDs(ids...)
+// SetServerID sets the "server" edge to the Server entity by ID.
+func (scu *ServerConfigUpdate) SetServerID(id int) *ServerConfigUpdate {
+	scu.mutation.SetServerID(id)
 	return scu
 }
 
-// AddServer adds the "server" edges to the Server entity.
-func (scu *ServerConfigUpdate) AddServer(s ...*Server) *ServerConfigUpdate {
-	ids := make([]string, len(s))
-	for i := range s {
-		ids[i] = s[i].ID
+// SetNillableServerID sets the "server" edge to the Server entity by ID if the given value is not nil.
+func (scu *ServerConfigUpdate) SetNillableServerID(id *int) *ServerConfigUpdate {
+	if id != nil {
+		scu = scu.SetServerID(*id)
 	}
-	return scu.AddServerIDs(ids...)
+	return scu
+}
+
+// SetServer sets the "server" edge to the Server entity.
+func (scu *ServerConfigUpdate) SetServer(s *Server) *ServerConfigUpdate {
+	return scu.SetServerID(s.ID)
 }
 
 // Mutation returns the ServerConfigMutation object of the builder.
@@ -324,25 +328,10 @@ func (scu *ServerConfigUpdate) Mutation() *ServerConfigMutation {
 	return scu.mutation
 }
 
-// ClearServer clears all "server" edges to the Server entity.
+// ClearServer clears the "server" edge to the Server entity.
 func (scu *ServerConfigUpdate) ClearServer() *ServerConfigUpdate {
 	scu.mutation.ClearServer()
 	return scu
-}
-
-// RemoveServerIDs removes the "server" edge to Server entities by IDs.
-func (scu *ServerConfigUpdate) RemoveServerIDs(ids ...string) *ServerConfigUpdate {
-	scu.mutation.RemoveServerIDs(ids...)
-	return scu
-}
-
-// RemoveServer removes "server" edges to Server entities.
-func (scu *ServerConfigUpdate) RemoveServer(s ...*Server) *ServerConfigUpdate {
-	ids := make([]string, len(s))
-	for i := range s {
-		ids[i] = s[i].ID
-	}
-	return scu.RemoveServerIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -455,6 +444,9 @@ func (scu *ServerConfigUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if value, ok := scu.mutation.LogChannel(); ok {
 		_spec.SetField(serverconfig.FieldLogChannel, field.TypeString, value)
 	}
+	if value, ok := scu.mutation.GivenRole(); ok {
+		_spec.SetField(serverconfig.FieldGivenRole, field.TypeString, value)
+	}
 	if value, ok := scu.mutation.ExcludedChannels(); ok {
 		_spec.SetField(serverconfig.FieldExcludedChannels, field.TypeJSON, value)
 	}
@@ -479,9 +471,6 @@ func (scu *ServerConfigUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			sqljson.Append(u, serverconfig.FieldExcludedUsers, value)
 		})
 	}
-	if value, ok := scu.mutation.GivenRole(); ok {
-		_spec.SetField(serverconfig.FieldGivenRole, field.TypeString, value)
-	}
 	if value, ok := scu.mutation.RatelimitMessage(); ok {
 		_spec.SetField(serverconfig.FieldRatelimitMessage, field.TypeInt, value)
 	}
@@ -499,42 +488,26 @@ func (scu *ServerConfigUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if scu.mutation.ServerCleared() {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
+			Rel:     sqlgraph.O2O,
 			Inverse: true,
 			Table:   serverconfig.ServerTable,
 			Columns: []string{serverconfig.ServerColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeInt),
 			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := scu.mutation.RemovedServerIDs(); len(nodes) > 0 && !scu.mutation.ServerCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: true,
-			Table:   serverconfig.ServerTable,
-			Columns: []string{serverconfig.ServerColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeString),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
 	if nodes := scu.mutation.ServerIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
+			Rel:     sqlgraph.O2O,
 			Inverse: true,
 			Table:   serverconfig.ServerTable,
 			Columns: []string{serverconfig.ServerColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {
@@ -724,6 +697,20 @@ func (scuo *ServerConfigUpdateOne) SetNillableLogChannel(s *string) *ServerConfi
 	return scuo
 }
 
+// SetGivenRole sets the "given_role" field.
+func (scuo *ServerConfigUpdateOne) SetGivenRole(s string) *ServerConfigUpdateOne {
+	scuo.mutation.SetGivenRole(s)
+	return scuo
+}
+
+// SetNillableGivenRole sets the "given_role" field if the given value is not nil.
+func (scuo *ServerConfigUpdateOne) SetNillableGivenRole(s *string) *ServerConfigUpdateOne {
+	if s != nil {
+		scuo.SetGivenRole(*s)
+	}
+	return scuo
+}
+
 // SetExcludedChannels sets the "excluded_channels" field.
 func (scuo *ServerConfigUpdateOne) SetExcludedChannels(s []string) *ServerConfigUpdateOne {
 	scuo.mutation.SetExcludedChannels(s)
@@ -757,20 +744,6 @@ func (scuo *ServerConfigUpdateOne) SetExcludedUsers(s []string) *ServerConfigUpd
 // AppendExcludedUsers appends s to the "excluded_users" field.
 func (scuo *ServerConfigUpdateOne) AppendExcludedUsers(s []string) *ServerConfigUpdateOne {
 	scuo.mutation.AppendExcludedUsers(s)
-	return scuo
-}
-
-// SetGivenRole sets the "given_role" field.
-func (scuo *ServerConfigUpdateOne) SetGivenRole(s string) *ServerConfigUpdateOne {
-	scuo.mutation.SetGivenRole(s)
-	return scuo
-}
-
-// SetNillableGivenRole sets the "given_role" field if the given value is not nil.
-func (scuo *ServerConfigUpdateOne) SetNillableGivenRole(s *string) *ServerConfigUpdateOne {
-	if s != nil {
-		scuo.SetGivenRole(*s)
-	}
 	return scuo
 }
 
@@ -837,19 +810,23 @@ func (scuo *ServerConfigUpdateOne) SetNillableBanDeleteMessageTime(sdmt *serverc
 	return scuo
 }
 
-// AddServerIDs adds the "server" edge to the Server entity by IDs.
-func (scuo *ServerConfigUpdateOne) AddServerIDs(ids ...string) *ServerConfigUpdateOne {
-	scuo.mutation.AddServerIDs(ids...)
+// SetServerID sets the "server" edge to the Server entity by ID.
+func (scuo *ServerConfigUpdateOne) SetServerID(id int) *ServerConfigUpdateOne {
+	scuo.mutation.SetServerID(id)
 	return scuo
 }
 
-// AddServer adds the "server" edges to the Server entity.
-func (scuo *ServerConfigUpdateOne) AddServer(s ...*Server) *ServerConfigUpdateOne {
-	ids := make([]string, len(s))
-	for i := range s {
-		ids[i] = s[i].ID
+// SetNillableServerID sets the "server" edge to the Server entity by ID if the given value is not nil.
+func (scuo *ServerConfigUpdateOne) SetNillableServerID(id *int) *ServerConfigUpdateOne {
+	if id != nil {
+		scuo = scuo.SetServerID(*id)
 	}
-	return scuo.AddServerIDs(ids...)
+	return scuo
+}
+
+// SetServer sets the "server" edge to the Server entity.
+func (scuo *ServerConfigUpdateOne) SetServer(s *Server) *ServerConfigUpdateOne {
+	return scuo.SetServerID(s.ID)
 }
 
 // Mutation returns the ServerConfigMutation object of the builder.
@@ -857,25 +834,10 @@ func (scuo *ServerConfigUpdateOne) Mutation() *ServerConfigMutation {
 	return scuo.mutation
 }
 
-// ClearServer clears all "server" edges to the Server entity.
+// ClearServer clears the "server" edge to the Server entity.
 func (scuo *ServerConfigUpdateOne) ClearServer() *ServerConfigUpdateOne {
 	scuo.mutation.ClearServer()
 	return scuo
-}
-
-// RemoveServerIDs removes the "server" edge to Server entities by IDs.
-func (scuo *ServerConfigUpdateOne) RemoveServerIDs(ids ...string) *ServerConfigUpdateOne {
-	scuo.mutation.RemoveServerIDs(ids...)
-	return scuo
-}
-
-// RemoveServer removes "server" edges to Server entities.
-func (scuo *ServerConfigUpdateOne) RemoveServer(s ...*Server) *ServerConfigUpdateOne {
-	ids := make([]string, len(s))
-	for i := range s {
-		ids[i] = s[i].ID
-	}
-	return scuo.RemoveServerIDs(ids...)
 }
 
 // Where appends a list predicates to the ServerConfigUpdate builder.
@@ -1018,6 +980,9 @@ func (scuo *ServerConfigUpdateOne) sqlSave(ctx context.Context) (_node *ServerCo
 	if value, ok := scuo.mutation.LogChannel(); ok {
 		_spec.SetField(serverconfig.FieldLogChannel, field.TypeString, value)
 	}
+	if value, ok := scuo.mutation.GivenRole(); ok {
+		_spec.SetField(serverconfig.FieldGivenRole, field.TypeString, value)
+	}
 	if value, ok := scuo.mutation.ExcludedChannels(); ok {
 		_spec.SetField(serverconfig.FieldExcludedChannels, field.TypeJSON, value)
 	}
@@ -1042,9 +1007,6 @@ func (scuo *ServerConfigUpdateOne) sqlSave(ctx context.Context) (_node *ServerCo
 			sqljson.Append(u, serverconfig.FieldExcludedUsers, value)
 		})
 	}
-	if value, ok := scuo.mutation.GivenRole(); ok {
-		_spec.SetField(serverconfig.FieldGivenRole, field.TypeString, value)
-	}
 	if value, ok := scuo.mutation.RatelimitMessage(); ok {
 		_spec.SetField(serverconfig.FieldRatelimitMessage, field.TypeInt, value)
 	}
@@ -1062,42 +1024,26 @@ func (scuo *ServerConfigUpdateOne) sqlSave(ctx context.Context) (_node *ServerCo
 	}
 	if scuo.mutation.ServerCleared() {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
+			Rel:     sqlgraph.O2O,
 			Inverse: true,
 			Table:   serverconfig.ServerTable,
 			Columns: []string{serverconfig.ServerColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeInt),
 			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := scuo.mutation.RemovedServerIDs(); len(nodes) > 0 && !scuo.mutation.ServerCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: true,
-			Table:   serverconfig.ServerTable,
-			Columns: []string{serverconfig.ServerColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeString),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
 	if nodes := scuo.mutation.ServerIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
+			Rel:     sqlgraph.O2O,
 			Inverse: true,
 			Table:   serverconfig.ServerTable,
 			Columns: []string{serverconfig.ServerColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {

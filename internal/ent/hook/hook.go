@@ -9,6 +9,18 @@ import (
 	"github.com/FM1337/ASB/internal/ent"
 )
 
+// The CooldownFunc type is an adapter to allow the use of ordinary
+// function as Cooldown mutator.
+type CooldownFunc func(context.Context, *ent.CooldownMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CooldownFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CooldownMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CooldownMutation", m)
+}
+
 // The ServerFunc type is an adapter to allow the use of ordinary
 // function as Server mutator.
 type ServerFunc func(context.Context, *ent.ServerMutation) (ent.Value, error)
@@ -31,6 +43,18 @@ func (f ServerConfigFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ServerConfigMutation", m)
+}
+
+// The SpammerFunc type is an adapter to allow the use of ordinary
+// function as Spammer mutator.
+type SpammerFunc func(context.Context, *ent.SpammerMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SpammerFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SpammerMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SpammerMutation", m)
 }
 
 // The WordBlacklistFunc type is an adapter to allow the use of ordinary

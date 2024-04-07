@@ -11,37 +11,43 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/FM1337/ASB/internal/ent/server"
 	"github.com/FM1337/ASB/internal/ent/serverconfig"
+	"github.com/FM1337/ASB/internal/ent/spammer"
 )
 
 // Server is the model entity for the Server schema.
 type Server struct {
 	config `json:"-"`
 	// ID of the ent.
-	ID string `json:"id,omitempty"`
+	ID int `json:"id,omitempty"`
 	// CreateTime holds the value of the "create_time" field.
 	CreateTime time.Time `json:"create_time,omitempty"`
 	// UpdateTime holds the value of the "update_time" field.
 	UpdateTime time.Time `json:"update_time,omitempty"`
+	// ServerID holds the value of the "server_id" field.
+	ServerID string `json:"server_id,omitempty"`
 	// OwnerID holds the value of the "owner_id" field.
 	OwnerID string `json:"owner_id,omitempty"`
 	// Enabled holds the value of the "enabled" field.
 	Enabled bool `json:"enabled,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the ServerQuery when eager-loading is set.
-	Edges                ServerEdges `json:"edges"`
-	server_configuration *int
-	selectValues         sql.SelectValues
+	Edges        ServerEdges `json:"edges"`
+	selectValues sql.SelectValues
 }
 
 // ServerEdges holds the relations/edges for other nodes in the graph.
 type ServerEdges struct {
 	// Configuration holds the value of the configuration edge.
 	Configuration *ServerConfig `json:"configuration,omitempty"`
+	// Spammer holds the value of the spammer edge.
+	Spammer *Spammer `json:"spammer,omitempty"`
 	// WordBlacklist holds the value of the word_blacklist edge.
 	WordBlacklist []*WordBlacklist `json:"word_blacklist,omitempty"`
+	// Cooldown holds the value of the cooldown edge.
+	Cooldown []*Cooldown `json:"cooldown,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [4]bool
 }
 
 // ConfigurationOrErr returns the Configuration value or an error if the edge
@@ -55,13 +61,33 @@ func (e ServerEdges) ConfigurationOrErr() (*ServerConfig, error) {
 	return nil, &NotLoadedError{edge: "configuration"}
 }
 
+// SpammerOrErr returns the Spammer value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e ServerEdges) SpammerOrErr() (*Spammer, error) {
+	if e.Spammer != nil {
+		return e.Spammer, nil
+	} else if e.loadedTypes[1] {
+		return nil, &NotFoundError{label: spammer.Label}
+	}
+	return nil, &NotLoadedError{edge: "spammer"}
+}
+
 // WordBlacklistOrErr returns the WordBlacklist value or an error if the edge
 // was not loaded in eager-loading.
 func (e ServerEdges) WordBlacklistOrErr() ([]*WordBlacklist, error) {
-	if e.loadedTypes[1] {
+	if e.loadedTypes[2] {
 		return e.WordBlacklist, nil
 	}
 	return nil, &NotLoadedError{edge: "word_blacklist"}
+}
+
+// CooldownOrErr returns the Cooldown value or an error if the edge
+// was not loaded in eager-loading.
+func (e ServerEdges) CooldownOrErr() ([]*Cooldown, error) {
+	if e.loadedTypes[3] {
+		return e.Cooldown, nil
+	}
+	return nil, &NotLoadedError{edge: "cooldown"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -71,12 +97,12 @@ func (*Server) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case server.FieldEnabled:
 			values[i] = new(sql.NullBool)
-		case server.FieldID, server.FieldOwnerID:
+		case server.FieldID:
+			values[i] = new(sql.NullInt64)
+		case server.FieldServerID, server.FieldOwnerID:
 			values[i] = new(sql.NullString)
 		case server.FieldCreateTime, server.FieldUpdateTime:
 			values[i] = new(sql.NullTime)
-		case server.ForeignKeys[0]: // server_configuration
-			values[i] = new(sql.NullInt64)
 		default:
 			values[i] = new(sql.UnknownType)
 		}
@@ -93,11 +119,11 @@ func (s *Server) assignValues(columns []string, values []any) error {
 	for i := range columns {
 		switch columns[i] {
 		case server.FieldID:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field id", values[i])
-			} else if value.Valid {
-				s.ID = value.String
+			value, ok := values[i].(*sql.NullInt64)
+			if !ok {
+				return fmt.Errorf("unexpected type %T for field id", value)
 			}
+			s.ID = int(value.Int64)
 		case server.FieldCreateTime:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field create_time", values[i])
@@ -110,6 +136,12 @@ func (s *Server) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				s.UpdateTime = value.Time
 			}
+		case server.FieldServerID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field server_id", values[i])
+			} else if value.Valid {
+				s.ServerID = value.String
+			}
 		case server.FieldOwnerID:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field owner_id", values[i])
@@ -121,13 +153,6 @@ func (s *Server) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field enabled", values[i])
 			} else if value.Valid {
 				s.Enabled = value.Bool
-			}
-		case server.ForeignKeys[0]:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for edge-field server_configuration", value)
-			} else if value.Valid {
-				s.server_configuration = new(int)
-				*s.server_configuration = int(value.Int64)
 			}
 		default:
 			s.selectValues.Set(columns[i], values[i])
@@ -147,9 +172,19 @@ func (s *Server) QueryConfiguration() *ServerConfigQuery {
 	return NewServerClient(s.config).QueryConfiguration(s)
 }
 
+// QuerySpammer queries the "spammer" edge of the Server entity.
+func (s *Server) QuerySpammer() *SpammerQuery {
+	return NewServerClient(s.config).QuerySpammer(s)
+}
+
 // QueryWordBlacklist queries the "word_blacklist" edge of the Server entity.
 func (s *Server) QueryWordBlacklist() *WordBlacklistQuery {
 	return NewServerClient(s.config).QueryWordBlacklist(s)
+}
+
+// QueryCooldown queries the "cooldown" edge of the Server entity.
+func (s *Server) QueryCooldown() *CooldownQuery {
+	return NewServerClient(s.config).QueryCooldown(s)
 }
 
 // Update returns a builder for updating this Server.
@@ -180,6 +215,9 @@ func (s *Server) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("update_time=")
 	builder.WriteString(s.UpdateTime.Format(time.ANSIC))
+	builder.WriteString(", ")
+	builder.WriteString("server_id=")
+	builder.WriteString(s.ServerID)
 	builder.WriteString(", ")
 	builder.WriteString("owner_id=")
 	builder.WriteString(s.OwnerID)

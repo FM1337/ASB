@@ -409,7 +409,7 @@ func (wbq *WordBlacklistQuery) sqlAll(ctx context.Context, hooks ...queryHook) (
 func (wbq *WordBlacklistQuery) loadServer(ctx context.Context, query *ServerQuery, nodes []*WordBlacklist, init func(*WordBlacklist), assign func(*WordBlacklist, *Server)) error {
 	edgeIDs := make([]driver.Value, len(nodes))
 	byID := make(map[int]*WordBlacklist)
-	nids := make(map[string]map[*WordBlacklist]struct{})
+	nids := make(map[int]map[*WordBlacklist]struct{})
 	for i, node := range nodes {
 		edgeIDs[i] = node.ID
 		byID[node.ID] = node
@@ -442,7 +442,7 @@ func (wbq *WordBlacklistQuery) loadServer(ctx context.Context, query *ServerQuer
 			}
 			spec.Assign = func(columns []string, values []any) error {
 				outValue := int(values[0].(*sql.NullInt64).Int64)
-				inValue := values[1].(*sql.NullString).String
+				inValue := int(values[1].(*sql.NullInt64).Int64)
 				if nids[inValue] == nil {
 					nids[inValue] = map[*WordBlacklist]struct{}{byID[outValue]: {}}
 					return assign(columns[1:], values[1:])

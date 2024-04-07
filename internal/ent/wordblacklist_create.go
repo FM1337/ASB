@@ -58,14 +58,14 @@ func (wbc *WordBlacklistCreate) SetWord(s string) *WordBlacklistCreate {
 }
 
 // AddServerIDs adds the "server" edge to the Server entity by IDs.
-func (wbc *WordBlacklistCreate) AddServerIDs(ids ...string) *WordBlacklistCreate {
+func (wbc *WordBlacklistCreate) AddServerIDs(ids ...int) *WordBlacklistCreate {
 	wbc.mutation.AddServerIDs(ids...)
 	return wbc
 }
 
 // AddServer adds the "server" edges to the Server entity.
 func (wbc *WordBlacklistCreate) AddServer(s ...*Server) *WordBlacklistCreate {
-	ids := make([]string, len(s))
+	ids := make([]int, len(s))
 	for i := range s {
 		ids[i] = s[i].ID
 	}
@@ -175,7 +175,7 @@ func (wbc *WordBlacklistCreate) createSpec() (*WordBlacklist, *sqlgraph.CreateSp
 			Columns: wordblacklist.ServerPrimaryKey,
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(server.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {
