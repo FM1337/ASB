@@ -35,7 +35,7 @@ func (ServerConfig) Fields() []ent.Field {
 
 		field.Int("ratelimit_message").Default(3).Comment("The amount of times the same message can be sent within the rate limit period before being considered spam"),
 
-		field.Enum("ratelimit_time").Values().Values("30s", "1m", "2m", "3m", "4m", "5m").Default("5m").Comment("The ratelimit cooldown time, message tracking will be reset after this time period"),
+		field.Enum("ratelimit_time").Values().Values("30s", "1m", "2m", "3m", "4m", "5m").Default("2m").Comment("The ratelimit cooldown time, message tracking will be reset after this time period"),
 		field.Enum("timeout_time").Values().Values("60s", "5m", "10m", "1h", "1d", "1w").Default("1h").Comment("The discord timeout time assigned to a spammer"),
 		field.Enum("ban_delete_message_time").Values("1h", "6h", "12h", "1d", "3d", "1w").Default("1h").Comment("The discord time to remove messages sent by a spammer"),
 	}

@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -80,6 +81,7 @@ func LoadData(db *ent.Client) (*Data, error) {
 				ExcludedChannels:     config.ExcludedChannels,
 				ExcludedRoles:        config.ExcludedRoles,
 				ExcluedUsers:         config.ExcludedUsers,
+				RateLimitCount:       config.RatelimitMessage,
 				RateLimitTime:        config.RatelimitTime,
 				TimeoutTime:          config.TimeoutTime,
 				BanMessageDeleteTime: config.BanDeleteMessageTime,
@@ -148,6 +150,7 @@ func (d *Data) AddServer(serverId, ownerId string) (error, error) {
 		ExcludedChannels:     config.ExcludedChannels,
 		ExcludedRoles:        config.ExcludedRoles,
 		ExcluedUsers:         config.ExcludedUsers,
+		RateLimitCount:       config.RatelimitMessage,
 		RateLimitTime:        config.RatelimitTime,
 		TimeoutTime:          config.TimeoutTime,
 		BanMessageDeleteTime: config.BanDeleteMessageTime,
@@ -163,6 +166,95 @@ func (d *Data) AddServer(serverId, ownerId string) (error, error) {
 func (d *Data) ServerExists(serverId string) bool {
 	_, ok := d.configuration[serverId]
 	return ok
+}
+
+func (d *Data) EnableServer(serverId string) (bool, error) {
+	if !d.ServerExists(serverId) {
+		return false, fmt.Errorf("your server doesn't exist in the bot's memory")
+	}
+
+	// check to see if the bot is already enabled
+
+	if d.enabled[serverId] {
+		return false, fmt.Errorf("bot already enabled")
+	}
+
+	// grab the config
+	cfg := d.GetConfiguration(serverId)
+
+	// this is to determine the highest possible level of sus that can
+	// be detected based on enabled checks
+	highestPossibleSusLevel := 0
+
+	hasBlacklist := len(d.blacklist[serverId]) > 0
+
+	if hasBlacklist {
+		highestPossibleSusLevel++
+	}
+
+	if cfg.CheckLinks {
+		highestPossibleSusLevel++
+	}
+
+	if cfg.CheckInvites {
+		highestPossibleSusLevel++
+
+		// if there's a blacklist, there's a possibility of the invite server name being in there.
+		if hasBlacklist {
+			highestPossibleSusLevel++
+		}
+	}
+
+	if cfg.EnforceRatelimit {
+		highestPossibleSusLevel++
+	}
+
+	if cfg.FlagLinks {
+		highestPossibleSusLevel++
+	}
+
+	// We need at 3, if not then the bot can't reliably flag spammers
+
+	if highestPossibleSusLevel < 3 {
+		return false, fmt.Errorf("security configured too low, high chance of false flagging or missing actual spammers")
+	}
+
+	return d.changeServerStatus(serverId, true)
+}
+
+func (d *Data) DisableServer(serverId string) (bool, error) {
+	if !d.ServerExists(serverId) {
+		return false, fmt.Errorf("your server doesn't exist in the bot's memory")
+	}
+
+	// check to see if the bot is already disabled
+	if !d.enabled[serverId] {
+		return false, fmt.Errorf("bot already disabled")
+	}
+
+	return d.changeServerStatus(serverId, false)
+}
+
+func (d *Data) changeServerStatus(serverId string, status bool) (bool, error) {
+	srv, err := d.db.Server.Query().Where(server.ServerID(serverId)).First(context.Background())
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return false, fmt.Errorf("server missing from database")
+		}
+		// TODO log the error to the error channel/probably sentry but don't send the exposed error
+		return false, fmt.Errorf("unexpected server error occurred while fetching server")
+	}
+
+	_, err = srv.Update().SetEnabled(status).Save(context.TODO())
+
+	if err != nil {
+		return false, fmt.Errorf("unexpected server error occurred while saving server enabled status")
+	}
+
+	// update memory db
+	d.enabled[serverId] = status
+
+	return true, nil
 }
 
 func (d *Data) UpdateConfiguration(serverId string, config models.ServerConfig) {}
@@ -193,6 +285,34 @@ func (d *Data) Enabled(serverId string) bool {
 	}
 
 	return d.enabled[serverId]
+}
+
+func (d *Data) ShouldIgnore(serverId, channelId, userId string, roleIds []string) bool {
+	cfg := d.configuration[serverId]
+
+	// Check if the message is in a channel or is a user for a server that we should ignore
+	if slices.Contains(cfg.ExcludedChannels, channelId) || slices.Contains(cfg.ExcluedUsers, userId) {
+		return true
+	}
+
+	// check for er
+	return slices.ContainsFunc(cfg.ExcludedRoles, func(roleId string) bool {
+		return slices.Contains(roleIds, roleId)
+	})
+
+}
+
+func (d *Data) MessageSeenBefore(serverId, userId, hash string) (bool, int) {
+	cooldowns := d.cooldown[serverId]
+	index := slices.IndexFunc(cooldowns, func(c models.Cooldown) bool {
+		return c.HashId == hash && c.UserId == userId
+	})
+
+	if index == -1 {
+		return false, 0
+	}
+
+	return true, cooldowns[index].Count
 }
 
 // Cleans up unused data (such as unused words) TODO

@@ -26,6 +26,9 @@ type ServerConfig struct {
 	ExcludedRoles    []string
 	ExcluedUsers     []string
 
+	// Ratelimit limit
+	RateLimitCount int
+
 	/** pre defined values */
 	RateLimitTime        serverconfig.RatelimitTime
 	TimeoutTime          serverconfig.TimeoutTime
@@ -33,8 +36,9 @@ type ServerConfig struct {
 }
 
 type Cooldown struct {
-	UserId  string
-	HashId  string
-	Count   int
-	ResetAt time.Time
+	UserId     string
+	HashId     string
+	MessageIds []string
+	Count      int
+	ResetAt    time.Time
 }
